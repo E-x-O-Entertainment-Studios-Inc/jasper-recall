@@ -17,6 +17,12 @@ Local RAG (Retrieval-Augmented Generation) system for AI agent memory. Gives you
 - **Shared memory sync** — Bidirectional learning between main and sandboxed agents
 - **Privacy checker** — Scan content for sensitive data before sharing
 
+### New in v0.2.1: Recall Server
+
+- **HTTP API server** — `npx jasper-recall serve` for Docker-isolated agents
+- **Public-only by default** — Secure API access for untrusted callers
+- **CORS enabled** — Works from browsers and agent containers
+
 ## Quick Start
 
 ```bash
@@ -153,6 +159,49 @@ index-digests
 # Sandboxed agent queries only public content
 recall "product info" --public-only
 ```
+
+## Recall Server (v0.2.1+)
+
+For **Docker-isolated agents** that can't run the CLI directly, start an HTTP API server:
+
+```bash
+npx jasper-recall serve              # Default: localhost:3458
+npx jasper-recall serve --port 8080  # Custom port
+npx jasper-recall serve --host 0.0.0.0  # Allow external access
+```
+
+### API Endpoints
+
+```
+GET /recall?q=search+query&limit=5
+GET /health
+```
+
+### Example
+
+```bash
+# Query from Docker container
+curl "http://host.docker.internal:3458/recall?q=product+info"
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "query": "product info",
+  "public_only": true,
+  "count": 3,
+  "results": [
+    { "content": "...", "file": "memory/shared/product-updates.md", "score": 0.85 }
+  ]
+}
+```
+
+### Security
+
+- **`public_only=true` is enforced by default** — API callers only see public content
+- To allow private queries (dangerous!), set `RECALL_ALLOW_PRIVATE=true`
+- Bind to `127.0.0.1` (default) to prevent external access
 
 ## Configuration
 

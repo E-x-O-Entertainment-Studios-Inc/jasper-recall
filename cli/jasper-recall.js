@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.1';
 const VENV_PATH = path.join(os.homedir(), '.openclaw', 'rag-env');
 const CHROMA_PATH = path.join(os.homedir(), '.openclaw', 'chroma-db');
 const BIN_PATH = path.join(os.homedir(), '.local', 'bin');
@@ -134,6 +134,7 @@ COMMANDS:
   recall      Search your memory (alias for the recall command)
   index       Index memory files (alias for index-digests)
   digest      Process session logs (alias for digest-sessions)
+  serve       Start HTTP API server (for sandboxed agents)
   help        Show this help message
 
 EXAMPLES:
@@ -141,6 +142,7 @@ EXAMPLES:
   recall "what did we discuss yesterday"
   index-digests
   digest-sessions --dry-run
+  npx jasper-recall serve --port 3458
 `);
 }
 
@@ -177,6 +179,12 @@ switch (command) {
     } else {
       error('Run "npx jasper-recall setup" first');
     }
+    break;
+  case 'serve':
+  case 'server':
+    // Start the HTTP server for sandboxed agents
+    const serverArgs = process.argv.slice(3);
+    require('./server');
     break;
   case '--version':
   case '-v':

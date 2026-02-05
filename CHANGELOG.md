@@ -2,6 +2,21 @@
 
 All notable changes to Jasper Recall will be documented in this file.
 
+## [0.2.1] - 2026-02-05
+
+### Added
+- **`serve` command** — HTTP API server for sandboxed/Docker agents
+  - `npx jasper-recall serve --port 3458`
+  - `GET /recall?q=query` endpoint
+  - Public-only enforced by default for security
+  - CORS enabled for browser/agent access
+- Sandboxed agents can now query memories without CLI access
+- Server exports for programmatic use
+
+### Security
+- API server enforces `public_only=true` by default
+- Private content access requires `RECALL_ALLOW_PRIVATE=true` env var
+
 ## [0.2.0] - 2026-02-05
 
 ### Added
