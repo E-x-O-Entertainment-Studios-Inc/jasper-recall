@@ -1,12 +1,14 @@
 ---
 name: jasper-recall
-version: 0.2.0
-description: Local RAG system for agent memory using ChromaDB and sentence-transformers. Provides semantic search over session logs, daily notes, and memory files. v0.2.0 adds shared agent memory with privacy controls — tag entries [public]/[private], use --public-only for sandboxed agents. Commands: recall, index-digests, digest-sessions, privacy-check, sync-shared.
+version: 0.2.1
+description: Local RAG system for agent memory using ChromaDB and sentence-transformers. Provides semantic search over session logs, daily notes, and memory files. v0.2.1 adds HTTP server for Docker-isolated agents. Commands: recall, index-digests, digest-sessions, privacy-check, sync-shared, serve.
 ---
 
-# Jasper Recall v0.2.0
+# Jasper Recall v0.2.1
 
 Local RAG (Retrieval-Augmented Generation) system for AI agent memory. Gives your agent the ability to remember and search past conversations.
+
+**New in v0.2.1:** Recall Server — HTTP API for Docker-isolated agents that can't run CLI directly.
 
 **New in v0.2.0:** Shared Agent Memory — bidirectional learning between main and sandboxed agents with privacy controls.
 
@@ -159,6 +161,30 @@ Options:
   --json            Output as JSON
   -v, --verbose     Show similarity scores
   --public-only     Only search shared/public content (v0.2.0+)
+```
+
+### serve (v0.2.1+)
+
+```
+npx jasper-recall serve [OPTIONS]
+
+Options:
+  --port, -p N    Port to listen on (default: 3458)
+  --host, -h H    Host to bind (default: 127.0.0.1)
+
+Starts HTTP API server for Docker-isolated agents.
+
+Endpoints:
+  GET /recall?q=query&limit=5    Search memories
+  GET /health                    Health check
+
+Security: public_only=true enforced by default.
+Set RECALL_ALLOW_PRIVATE=true to allow private queries.
+```
+
+**Example (from Docker container):**
+```bash
+curl "http://host.docker.internal:3458/recall?q=product+info"
 ```
 
 ### privacy-check (v0.2.0+)
