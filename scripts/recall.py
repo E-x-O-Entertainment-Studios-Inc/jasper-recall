@@ -36,6 +36,7 @@ def main():
     parser.add_argument("-n", "--limit", type=int, default=5, help="Number of results (default: 5)")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument("-v", "--verbose", action="store_true", help="Show similarity scores")
+    parser.add_argument("--public-only", action="store_true", help="Only search public/shared content (for sandboxed agents)")
     args = parser.parse_args()
     
     if not os.path.exists(CHROMA_DIR):
@@ -55,12 +56,50 @@ def main():
     # Embed query
     query_embedding = model.encode([args.query])[0].tolist()
     
-    # Search
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=args.limit,
-        include=["documents", "metadatas", "distances"]
-    )
+    # Search with optional public-only filter
+    # Fetch extra results if filtering, since we'll post-filter
+    fetch_limit = args.limit * 3 if args.public_only else args.limit
+    
+    query_params = {
+        "query_embeddings": [query_embedding],
+        "n_results": fetch_limit,
+        "include": ["documents", "metadatas", "distances"]
+    }
+    
+    results = collection.query(**query_params)
+    
+    # Post-filter for public-only mode
+    if args.public_only and results['documents'][0]:
+        filtered_docs = []
+        filtered_metas = []
+        filtered_dists = []
+        
+        for doc, meta, dist in zip(
+            results['documents'][0],
+            results['metadatas'][0],
+            results['distances'][0]
+        ):
+            source = meta.get('source', '')
+            visibility = meta.get('visibility', '')
+            
+            # Check if source is in shared/ folder OR has public visibility
+            is_shared = 'shared/' in source
+            is_public = visibility == 'public'
+            
+            # Reject if content contains [private] tag
+            has_private_tag = '[private]' in doc.lower()
+            
+            if (is_shared or is_public) and not has_private_tag:
+                filtered_docs.append(doc)
+                filtered_metas.append(meta)
+                filtered_dists.append(dist)
+                
+                if len(filtered_docs) >= args.limit:
+                    break
+        
+        results['documents'][0] = filtered_docs
+        results['metadatas'][0] = filtered_metas
+        results['distances'][0] = filtered_dists
     
     if not results['documents'][0]:
         if args.json:

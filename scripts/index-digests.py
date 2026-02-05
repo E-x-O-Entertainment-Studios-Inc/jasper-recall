@@ -107,6 +107,12 @@ def main():
     if os.path.exists(sops_dir):
         files_to_index.extend(glob.glob(os.path.join(sops_dir, "*.md")))
     
+    # Shared memory (public content for sandboxed agents)
+    shared_dir = os.path.join(MEMORY_DIR, "shared")
+    if os.path.exists(shared_dir):
+        files_to_index.extend(glob.glob(os.path.join(shared_dir, "*.md")))
+        files_to_index.extend(glob.glob(os.path.join(shared_dir, "**/*.md"), recursive=True))
+    
     print(f"Found {len(files_to_index)} files to index")
     
     # Track stats
@@ -159,6 +165,10 @@ def main():
         # Generate embeddings
         embeddings = model.encode(chunks).tolist()
         
+        # Determine visibility (public if in shared/ or contains [public] tag)
+        is_public = "shared/" in rel_path or "[public]" in content.lower()
+        visibility = "public" if is_public else "private"
+        
         # Create IDs and metadata
         ids = [f"{rel_path}::{i}" for i in range(len(chunks))]
         metadatas = [
@@ -166,7 +176,8 @@ def main():
                 "source": rel_path,
                 "chunk_index": i,
                 "file_hash": file_hash,
-                "filename": filename
+                "filename": filename,
+                "visibility": visibility
             }
             for i in range(len(chunks))
         ]

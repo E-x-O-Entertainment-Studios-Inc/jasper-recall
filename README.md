@@ -10,6 +10,13 @@ Local RAG (Retrieval-Augmented Generation) system for AI agent memory. Gives you
 - **Session digests** — automatically extracts key info from chat logs
 - **OpenClaw integration** — works seamlessly with OpenClaw agents
 
+### New in v0.2.0: Shared Agent Memory
+
+- **Memory tagging** — Mark entries `[public]` or `[private]` to control visibility
+- **Privacy filtering** — `--public-only` flag for sandboxed agents
+- **Shared memory sync** — Bidirectional learning between main and sandboxed agents
+- **Privacy checker** — Scan content for sensitive data before sharing
+
 ## Quick Start
 
 ```bash
@@ -67,6 +74,7 @@ recall "query"              # Basic search
 recall "query" -n 10        # More results
 recall "query" --json       # JSON output
 recall "query" -v           # Show similarity scores
+recall "query" --public-only  # Only shared content (for sandboxed agents)
 ```
 
 ### index-digests
@@ -85,6 +93,65 @@ Extract summaries from session logs:
 digest-sessions             # Process new sessions only
 digest-sessions --all       # Reprocess everything
 digest-sessions --dry-run   # Preview without writing
+```
+
+### privacy-check (v0.2.0+)
+
+Scan content for sensitive data before sharing:
+
+```bash
+privacy-check "text to scan"     # Check inline text
+privacy-check --file notes.md    # Check a file
+```
+
+Detects: emails, API keys, internal IPs, home paths, credentials.
+
+### sync-shared (v0.2.0+)
+
+Extract `[public]` tagged entries to shared memory:
+
+```bash
+sync-shared                 # Sync recent entries
+sync-shared --all           # Reprocess all daily notes
+sync-shared --dry-run       # Preview without writing
+```
+
+## Shared Agent Memory (v0.2.0+)
+
+For multi-agent setups where sandboxed agents need access to some (but not all) memory:
+
+### Memory Tagging
+
+Tag daily note sections as public or private:
+
+```markdown
+## 2026-02-05 [public] - Shipped new feature
+Released v1.0, good reception from users.
+
+## 2026-02-05 [private] - Personal notes
+User mentioned travel plans next week.
+```
+
+- `[public]` — Visible to all agents (synced to `memory/shared/`)
+- `[private]` — Main agent only (default if untagged)
+
+### Setup for Sandboxed Agents
+
+1. Create shared directory: `mkdir -p ~/.openclaw/workspace/memory/shared`
+2. Symlink to sandboxed workspace: `ln -s ~/.openclaw/workspace/memory/shared ~/.openclaw/workspace-sandbox/shared`
+3. Use `--public-only` flag in sandboxed agent's recall queries
+
+### Sync Workflow
+
+```bash
+# Extract [public] entries to shared/
+sync-shared
+
+# Index everything (including shared/)
+index-digests
+
+# Sandboxed agent queries only public content
+recall "product info" --public-only
 ```
 
 ## Configuration

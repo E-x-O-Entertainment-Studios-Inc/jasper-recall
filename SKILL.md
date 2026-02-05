@@ -1,11 +1,14 @@
 ---
 name: jasper-recall
-description: Local RAG system for agent memory using ChromaDB and sentence-transformers. Provides semantic search over session logs, daily notes, and memory files. Use when you need persistent memory across sessions, want to search past conversations, or build agents that remember context. Commands: recall "query", index-digests, digest-sessions.
+version: 0.2.0
+description: Local RAG system for agent memory using ChromaDB and sentence-transformers. Provides semantic search over session logs, daily notes, and memory files. v0.2.0 adds shared agent memory with privacy controls — tag entries [public]/[private], use --public-only for sandboxed agents. Commands: recall, index-digests, digest-sessions, privacy-check, sync-shared.
 ---
 
-# Jasper Recall
+# Jasper Recall v0.2.0
 
 Local RAG (Retrieval-Augmented Generation) system for AI agent memory. Gives your agent the ability to remember and search past conversations.
+
+**New in v0.2.0:** Shared Agent Memory — bidirectional learning between main and sandboxed agents with privacy controls.
 
 ## When to Use
 
@@ -106,6 +109,44 @@ Schedule regular indexing:
 }
 ```
 
+## Shared Agent Memory (v0.2.0)
+
+For multi-agent setups where sandboxed agents need access to some memories:
+
+### Memory Tagging
+
+Tag entries in daily notes:
+
+```markdown
+## 2026-02-05 [public] - Feature shipped
+This is visible to all agents.
+
+## 2026-02-05 [private] - Personal note
+This is main agent only (default if untagged).
+```
+
+### Sandboxed Agent Access
+
+```bash
+# Sandboxed agents use --public-only
+recall "product info" --public-only
+
+# Main agent can see everything
+recall "product info"
+```
+
+### Privacy Workflow
+
+```bash
+# Check for sensitive data before sharing
+privacy-check "text to scan"
+privacy-check --file notes.md
+
+# Extract [public] entries to shared directory
+sync-shared
+sync-shared --dry-run  # Preview first
+```
+
 ## CLI Reference
 
 ### recall
@@ -117,6 +158,29 @@ Options:
   -n, --limit N     Number of results (default: 5)
   --json            Output as JSON
   -v, --verbose     Show similarity scores
+  --public-only     Only search shared/public content (v0.2.0+)
+```
+
+### privacy-check (v0.2.0+)
+
+```
+privacy-check "text"     # Scan inline text
+privacy-check --file X   # Scan a file
+
+Detects: emails, API keys, internal IPs, home paths, credentials.
+Returns: CLEAN or list of violations.
+```
+
+### sync-shared (v0.2.0+)
+
+```
+sync-shared [OPTIONS]
+
+Options:
+  --dry-run    Preview without writing
+  --all        Process all daily notes
+
+Extracts [public] tagged entries to memory/shared/.
 ```
 
 ### index-digests
