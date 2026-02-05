@@ -47,3 +47,10 @@ All notable changes to Jasper Recall will be documented in this file.
 ### Fixed
 - `serve` command now properly passes CLI arguments (--help, --port, etc.)
 - Server runCLI function exported for programmatic use
+
+## [0.2.3] - 2026-02-05
+
+### Added
+- **Automatic update check** — Notifies you when new versions are available
+- `update` command — Manually check for updates: `npx jasper-recall update`
+- Update checks cached for 24 hours (non-intrusive)

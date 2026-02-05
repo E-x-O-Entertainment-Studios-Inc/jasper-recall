@@ -15,7 +15,11 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const VERSION = '0.2.2';
+const VERSION = '0.2.3';
+
+// Check for updates in background (non-blocking)
+const { checkInBackground } = require('./update-check');
+checkInBackground();
 const VENV_PATH = path.join(os.homedir(), '.openclaw', 'rag-env');
 const CHROMA_PATH = path.join(os.homedir(), '.openclaw', 'chroma-db');
 const BIN_PATH = path.join(os.homedir(), '.local', 'bin');
@@ -135,6 +139,7 @@ COMMANDS:
   index       Index memory files (alias for index-digests)
   digest      Process session logs (alias for digest-sessions)
   serve       Start HTTP API server (for sandboxed agents)
+  update      Check for updates
   help        Show this help message
 
 EXAMPLES:
@@ -185,6 +190,18 @@ switch (command) {
     // Start the HTTP server for sandboxed agents
     const { runCLI } = require('./server');
     runCLI(process.argv.slice(3));
+    break;
+  case 'update':
+  case 'check-update':
+    // Check for updates explicitly
+    const { checkForUpdates } = require('./update-check');
+    checkForUpdates().then(result => {
+      if (result && !result.updateAvailable) {
+        console.log(`✓ You're on the latest version (${result.current})`);
+      } else if (!result) {
+        console.log('Could not check for updates');
+      }
+    });
     break;
   case '--version':
   case '-v':
