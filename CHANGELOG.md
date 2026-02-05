@@ -54,3 +54,12 @@ All notable changes to Jasper Recall will be documented in this file.
 - **Automatic update check** — Notifies you when new versions are available
 - `update` command — Manually check for updates: `npx jasper-recall update`
 - Update checks cached for 24 hours (non-intrusive)
+
+## [0.2.4] - 2026-02-05
+
+### Added
+- **Configuration management** — `npx jasper-recall config` shows settings
+- Config file: `~/.jasper-recall/config.json`
+- `config init` creates config file with defaults
+- Environment variables override config file
+- Documented all configuration options in help

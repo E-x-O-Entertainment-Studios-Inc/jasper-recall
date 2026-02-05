@@ -2,6 +2,11 @@
 """
 Index markdown files into ChromaDB for RAG retrieval.
 Reads from memory/, session-digests/, repos/, and founder-logs/.
+
+v0.3.0: Multi-collection architecture
+- private_memories: main agent only (default)
+- shared_memories: accessible to sandboxed agents  
+- agent_learnings: insights from agent interactions (moltbook, etc.)
 """
 
 import os
@@ -56,8 +61,96 @@ def get_file_hash(content: str) -> str:
     return hashlib.md5(content.encode()).hexdigest()
 
 
+def determine_collection(rel_path: str, content: str) -> str:
+    """
+    Determine which collection a file belongs to based on path and content.
+    
+    Returns: 'private', 'shared', or 'learnings'
+    """
+    rel_lower = rel_path.lower()
+    content_lower = content.lower()
+    
+    # Agent learnings: moltbook insights, agent collaboration notes
+    if any(x in rel_lower for x in ['moltbook/', 'learnings/', 'agent-insights/']):
+        return 'learnings'
+    if '[learning]' in content_lower or '[insight]' in content_lower:
+        return 'learnings'
+    
+    # Shared: explicit shared folder or [public] tag
+    if 'shared/' in rel_lower:
+        return 'shared'
+    if '[public]' in content_lower:
+        return 'shared'
+    
+    # Default: private
+    return 'private'
+
+
+def index_to_collection(collection, model, filepath, rel_path, content, file_hash, stats):
+    """Index a file's chunks into a specific collection."""
+    filename = os.path.basename(filepath)
+    
+    # Check for existing chunks from this file
+    try:
+        existing = collection.get(
+            where={"source": rel_path},
+            include=[]
+        )
+    except Exception:
+        existing = {'ids': []}
+    
+    if existing['ids']:
+        # Check if hash matches (stored in first chunk's metadata)
+        try:
+            existing_meta = collection.get(
+                ids=[existing['ids'][0]],
+                include=["metadatas"]
+            )
+            if existing_meta['metadatas'] and existing_meta['metadatas'][0].get('file_hash') == file_hash:
+                stats['skipped'] += 1
+                return False
+        except Exception:
+            pass
+        
+        # File changed, delete old chunks
+        collection.delete(ids=existing['ids'])
+    
+    # Chunk the content
+    chunks = chunk_text(content)
+    
+    if not chunks:
+        return False
+    
+    # Generate embeddings
+    embeddings = model.encode(chunks).tolist()
+    
+    # Create IDs and metadata
+    ids = [f"{rel_path}::{i}" for i in range(len(chunks))]
+    metadatas = [
+        {
+            "source": rel_path,
+            "chunk_index": i,
+            "file_hash": file_hash,
+            "filename": filename,
+        }
+        for i in range(len(chunks))
+    ]
+    
+    # Add to collection
+    collection.add(
+        ids=ids,
+        embeddings=embeddings,
+        documents=chunks,
+        metadatas=metadatas
+    )
+    
+    stats['chunks'] += len(chunks)
+    stats['files'] += 1
+    return True
+
+
 def main():
-    print("🦊 Jasper Recall — RAG Indexer")
+    print("🦊 Jasper Recall — RAG Indexer v0.3.0")
     print("=" * 40)
     
     # Check if memory dir exists
@@ -75,11 +168,29 @@ def main():
     os.makedirs(CHROMA_DIR, exist_ok=True)
     client = chromadb.PersistentClient(path=CHROMA_DIR)
     
-    # Get or create collection
-    collection = client.get_or_create_collection(
+    # Create collections with descriptions
+    collections = {
+        "private": client.get_or_create_collection(
+            name="private_memories",
+            metadata={"description": "Private agent memories - main agent only"}
+        ),
+        "shared": client.get_or_create_collection(
+            name="shared_memories",
+            metadata={"description": "Shared memories - accessible to sandboxed agents"}
+        ),
+        "learnings": client.get_or_create_collection(
+            name="agent_learnings",
+            metadata={"description": "Agent learnings and insights from interactions"}
+        ),
+    }
+    
+    # Also maintain legacy collection for backwards compatibility
+    legacy_collection = client.get_or_create_collection(
         name="jasper_memory",
-        metadata={"description": "Agent session digests and memory files"}
+        metadata={"description": "Legacy collection - use specific collections instead"}
     )
+    
+    print(f"✓ Collections: private_memories, shared_memories, agent_learnings")
     
     # Gather files to index
     files_to_index = []
@@ -113,12 +224,23 @@ def main():
         files_to_index.extend(glob.glob(os.path.join(shared_dir, "*.md")))
         files_to_index.extend(glob.glob(os.path.join(shared_dir, "**/*.md"), recursive=True))
     
+    # Moltbook learnings
+    moltbook_dir = os.path.join(MEMORY_DIR, "shared", "moltbook")
+    if os.path.exists(moltbook_dir):
+        files_to_index.extend(glob.glob(os.path.join(moltbook_dir, "*.md")))
+    
+    # Remove duplicates while preserving order
+    files_to_index = list(dict.fromkeys(files_to_index))
+    
     print(f"Found {len(files_to_index)} files to index")
     
-    # Track stats
-    total_chunks = 0
-    indexed_files = 0
-    skipped_files = 0
+    # Track stats per collection
+    stats = {
+        "private": {"files": 0, "chunks": 0, "skipped": 0},
+        "shared": {"files": 0, "chunks": 0, "skipped": 0},
+        "learnings": {"files": 0, "chunks": 0, "skipped": 0},
+        "legacy": {"files": 0, "chunks": 0, "skipped": 0},
+    }
     
     for filepath in files_to_index:
         filename = os.path.basename(filepath)
@@ -134,69 +256,32 @@ def main():
         if not content.strip():
             continue
         
-        # Check if already indexed with same hash
         file_hash = get_file_hash(content)
         
-        # Check for existing chunks from this file
-        existing = collection.get(
-            where={"source": rel_path},
-            include=[]
+        # Determine target collection
+        coll_key = determine_collection(rel_path, content)
+        collection = collections[coll_key]
+        
+        # Index to the appropriate collection
+        indexed = index_to_collection(
+            collection, model, filepath, rel_path, content, file_hash, stats[coll_key]
         )
         
-        if existing['ids']:
-            # Check if hash matches (stored in first chunk's metadata)
-            existing_meta = collection.get(
-                ids=[existing['ids'][0]],
-                include=["metadatas"]
-            )
-            if existing_meta['metadatas'] and existing_meta['metadatas'][0].get('file_hash') == file_hash:
-                skipped_files += 1
-                continue
-            
-            # File changed, delete old chunks
-            collection.delete(ids=existing['ids'])
-        
-        # Chunk the content
-        chunks = chunk_text(content)
-        
-        if not chunks:
-            continue
-        
-        # Generate embeddings
-        embeddings = model.encode(chunks).tolist()
-        
-        # Determine visibility (public if in shared/ or contains [public] tag)
-        is_public = "shared/" in rel_path or "[public]" in content.lower()
-        visibility = "public" if is_public else "private"
-        
-        # Create IDs and metadata
-        ids = [f"{rel_path}::{i}" for i in range(len(chunks))]
-        metadatas = [
-            {
-                "source": rel_path,
-                "chunk_index": i,
-                "file_hash": file_hash,
-                "filename": filename,
-                "visibility": visibility
-            }
-            for i in range(len(chunks))
-        ]
-        
-        # Add to collection
-        collection.add(
-            ids=ids,
-            embeddings=embeddings,
-            documents=chunks,
-            metadatas=metadatas
+        # Also index to legacy collection for backwards compatibility
+        index_to_collection(
+            legacy_collection, model, filepath, rel_path, content, file_hash, stats["legacy"]
         )
         
-        total_chunks += len(chunks)
-        indexed_files += 1
-        print(f"  ✓ {filename}: {len(chunks)} chunks")
+        if indexed:
+            print(f"  ✓ {filename} → {coll_key} ({stats[coll_key]['chunks']} chunks)")
     
     print("=" * 40)
-    print(f"✓ Indexed {indexed_files} files ({total_chunks} chunks)")
-    print(f"  Skipped {skipped_files} unchanged files")
+    print("✓ Indexing complete")
+    for key, s in stats.items():
+        if key == "legacy":
+            continue
+        if s['files'] > 0 or s['skipped'] > 0:
+            print(f"  {key}: {s['files']} files ({s['chunks']} chunks), {s['skipped']} skipped")
     print(f"  Database: {CHROMA_DIR}")
 
 

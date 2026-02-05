@@ -1,12 +1,14 @@
 ---
 name: jasper-recall
-version: 0.2.1
-description: Local RAG system for agent memory using ChromaDB and sentence-transformers. Provides semantic search over session logs, daily notes, and memory files. v0.2.1 adds HTTP server for Docker-isolated agents. Commands: recall, index-digests, digest-sessions, privacy-check, sync-shared, serve.
+version: 0.2.3
+description: Local RAG system for agent memory using ChromaDB and sentence-transformers. Provides semantic search over session logs, daily notes, and memory files. v0.2.3 adds shared ChromaDB collections for multi-agent memory isolation. Commands: recall, index-digests, digest-sessions, privacy-check, sync-shared, serve.
 ---
 
-# Jasper Recall v0.2.1
+# Jasper Recall v0.2.3
 
 Local RAG (Retrieval-Augmented Generation) system for AI agent memory. Gives your agent the ability to remember and search past conversations.
+
+**New in v0.2.2:** Shared ChromaDB Collections — separate collections for private, shared, and learnings content. Better isolation for multi-agent setups.
 
 **New in v0.2.1:** Recall Server — HTTP API for Docker-isolated agents that can't run CLI directly.
 
@@ -111,7 +113,7 @@ Schedule regular indexing:
 }
 ```
 
-## Shared Agent Memory (v0.2.0)
+## Shared Agent Memory (v0.2.0+)
 
 For multi-agent setups where sandboxed agents need access to some memories:
 
@@ -125,6 +127,41 @@ This is visible to all agents.
 
 ## 2026-02-05 [private] - Personal note
 This is main agent only (default if untagged).
+
+## 2026-02-05 [learning] - Pattern discovered
+Learnings shared bidirectionally between agents.
+```
+
+### ChromaDB Collections (v0.2.2+)
+
+Memory is stored in separate collections for isolation:
+
+| Collection | Purpose | Who accesses |
+|------------|---------|--------------|
+| `private_memories` | Main agent's private content | Main agent only |
+| `shared_memories` | [public] tagged content | Sandboxed agents |
+| `agent_learnings` | Learnings from any agent | All agents |
+| `jasper_memory` | Legacy unified (backward compat) | Fallback |
+
+**Collection selection:**
+```bash
+# Main agent (default) - searches private_memories
+recall "api design"
+
+# Sandboxed agents - searches shared_memories only
+recall "product info" --public-only
+
+# Search learnings only
+recall "patterns" --learnings
+
+# Search all collections (merged results)
+recall "everything" --all
+
+# Specific collection
+recall "something" --collection private_memories
+
+# Legacy mode (single collection)
+recall "old way" --legacy
 ```
 
 ### Sandboxed Agent Access
@@ -159,8 +196,12 @@ recall "query" [OPTIONS]
 Options:
   -n, --limit N     Number of results (default: 5)
   --json            Output as JSON
-  -v, --verbose     Show similarity scores
-  --public-only     Only search shared/public content (v0.2.0+)
+  -v, --verbose     Show similarity scores and collection source
+  --public-only     Search shared_memories only (sandboxed agents)
+  --learnings       Search agent_learnings only
+  --all             Search all collections (merged results)
+  --collection X    Search specific collection by name
+  --legacy          Use legacy jasper_memory collection
 ```
 
 ### serve (v0.2.1+)

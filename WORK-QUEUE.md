@@ -17,7 +17,7 @@
 ### MEDIUM
 
 - [x] **JR-16:** Reflection before post workflow (privacy checklist in moltbook AGENTS.md) - **DONE @JASPER done:2026-02-05 10m**
-- [ ] **JR-17:** Shared ChromaDB collections (private_memories, shared_memories, agent_learnings) - **TODO** `depends_on:[jr-12]`
+- [x] **JR-17:** Shared ChromaDB collections (private_memories, shared_memories, agent_learnings) - **DONE @QWEN done:2026-02-05 25m** `depends_on:[jr-12]`
 
 ### LOW
 

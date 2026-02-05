@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const VERSION = '0.2.3';
+const VERSION = '0.2.4';
 
 // Check for updates in background (non-blocking)
 const { checkInBackground } = require('./update-check');
@@ -139,8 +139,19 @@ COMMANDS:
   index       Index memory files (alias for index-digests)
   digest      Process session logs (alias for digest-sessions)
   serve       Start HTTP API server (for sandboxed agents)
+  config      Show or set configuration
   update      Check for updates
   help        Show this help message
+
+CONFIGURATION:
+  Config file: ~/.jasper-recall/config.json
+  
+  Environment variables (override config file):
+    RECALL_WORKSPACE   Memory workspace path
+    RECALL_CHROMA_DB   ChromaDB storage path
+    RECALL_VENV        Python venv path
+    RECALL_PORT        Server port (default: 3458)
+    RECALL_HOST        Server host (default: 127.0.0.1)
 
 EXAMPLES:
   npx jasper-recall setup
@@ -202,6 +213,18 @@ switch (command) {
         console.log('Could not check for updates');
       }
     });
+    break;
+  case 'config':
+    // Configuration management
+    const config = require('./config');
+    const configArg = process.argv[3];
+    if (configArg === 'init') {
+      config.init();
+    } else if (configArg === 'path') {
+      console.log(config.CONFIG_FILE);
+    } else {
+      config.show();
+    }
     break;
   case '--version':
   case '-v':
