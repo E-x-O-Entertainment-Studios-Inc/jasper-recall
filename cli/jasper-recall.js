@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const VERSION = '0.2.1';
+const VERSION = '0.2.2';
 const VENV_PATH = path.join(os.homedir(), '.openclaw', 'rag-env');
 const CHROMA_PATH = path.join(os.homedir(), '.openclaw', 'chroma-db');
 const BIN_PATH = path.join(os.homedir(), '.local', 'bin');
@@ -183,8 +183,8 @@ switch (command) {
   case 'serve':
   case 'server':
     // Start the HTTP server for sandboxed agents
-    const serverArgs = process.argv.slice(3);
-    require('./server');
+    const { runCLI } = require('./server');
+    runCLI(process.argv.slice(3));
     break;
   case '--version':
   case '-v':

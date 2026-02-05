@@ -41,3 +41,9 @@ All notable changes to Jasper Recall will be documented in this file.
 - Local embeddings via sentence-transformers (all-MiniLM-L6-v2)
 - ChromaDB persistent vector storage
 - Incremental indexing with content hashing
+
+## [0.2.2] - 2026-02-05
+
+### Fixed
+- `serve` command now properly passes CLI arguments (--help, --port, etc.)
+- Server runCLI function exported for programmatic use

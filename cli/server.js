@@ -184,12 +184,10 @@ function startServer(port = 3458, host = '127.0.0.1') {
   return server;
 }
 
-// Export for programmatic use
-module.exports = { startServer, executeRecall, parseResults };
-
-// CLI entry point
-if (require.main === module) {
-  const args = process.argv.slice(2);
+/**
+ * Parse CLI args and start server
+ */
+function runCLI(args) {
   let port = 3458;
   let host = '127.0.0.1';
   
@@ -225,4 +223,12 @@ Examples:
   }
   
   startServer(port, host);
+}
+
+// Export for programmatic use
+module.exports = { startServer, executeRecall, parseResults, runCLI };
+
+// CLI entry point
+if (require.main === module) {
+  runCLI(process.argv.slice(2));
 }
