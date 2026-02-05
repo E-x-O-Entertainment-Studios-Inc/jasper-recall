@@ -1,0 +1,229 @@
+#!/usr/bin/env python3
+"""
+RAG recall: Search agent memory for relevant context.
+Supports multi-agent mesh for N agents sharing memory.
+
+Usage: recall "query" [--limit N] [--json] [--verbose]
+       recall "query" --agent sonnet --mesh qwen,opus
+"""
+
+import os
+import sys
+import argparse
+import json
+
+# Support custom paths via environment
+CHROMA_DIR = os.environ.get("RECALL_CHROMA_DB", os.path.expanduser("~/.openclaw/chroma-db"))
+VENV_PATH = os.environ.get("RECALL_VENV", os.path.expanduser("~/.openclaw/rag-env"))
+
+# Activate the venv
+sys.path.insert(0, os.path.join(VENV_PATH, "lib/python3.12/site-packages"))
+# Also try python3.11, 3.10 for compatibility
+for pyver in ["python3.11", "python3.10"]:
+    alt_path = os.path.join(VENV_PATH, f"lib/{pyver}/site-packages")
+    if os.path.exists(alt_path):
+        sys.path.insert(0, alt_path)
+
+try:
+    import chromadb
+    from sentence_transformers import SentenceTransformer
+except ImportError as e:
+    print(f"❌ Missing dependency: {e}", file=sys.stderr)
+    print("Run 'npx jasper-recall setup' to install dependencies.", file=sys.stderr)
+    sys.exit(1)
+
+
+def get_collection_names(client, agent_name=None, mesh_agents=None, public_only=False):
+    """
+    Determine which collections to query based on flags.
+    
+    JR-19: Multi-agent mesh support
+    - Default: legacy collections (private, shared, learnings)
+    - --agent X: query agent_X collection
+    - --mesh X,Y,Z: query multiple agent collections
+    - --public-only: only shared + learnings (backward compat)
+    """
+    collection_names = []
+    
+    if public_only:
+        # Sandboxed agents: only shared + learnings (JR-17)
+        collection_names = ["shared_memories", "agent_learnings"]
+    elif mesh_agents:
+        # Multi-agent mesh mode (JR-19)
+        for agent in mesh_agents:
+            collection_names.append(f"agent_{agent}")
+        # Also include shared and learnings
+        collection_names.extend(["shared_memories", "agent_learnings"])
+    elif agent_name:
+        # Single agent mode (JR-19)
+        collection_names = [
+            f"agent_{agent_name}",
+            "shared_memories",
+            "agent_learnings"
+        ]
+    else:
+        # Legacy mode: private + shared + learnings
+        collection_names = [
+            "private_memories",
+            "shared_memories",
+            "agent_learnings"
+        ]
+    
+    # Get collections that actually exist
+    existing_collections = {col.name for col in client.list_collections()}
+    collections = []
+    
+    for name in collection_names:
+        if name in existing_collections:
+            try:
+                collections.append((name, client.get_collection(name)))
+            except Exception:
+                pass
+    
+    return collections
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Search agent memory (multi-agent mesh)")
+    parser.add_argument("query", help="Search query")
+    parser.add_argument("-n", "--limit", type=int, default=5, help="Number of results (default: 5)")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Show similarity scores")
+    parser.add_argument("--public-only", action="store_true", help="Only search public/shared content (for sandboxed agents)")
+    
+    # JR-19: Multi-agent mesh flags
+    parser.add_argument("--agent", type=str, help="Query as specific agent (e.g., sonnet, qwen)")
+    parser.add_argument("--mesh", type=str, help="Query multiple agent collections (comma-separated, e.g., sonnet,qwen,opus)")
+    
+    args = parser.parse_args()
+    
+    if not os.path.exists(CHROMA_DIR):
+        print("❌ No index found. Run 'index-digests' first.", file=sys.stderr)
+        sys.exit(1)
+    
+    # Load model and database
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    client = chromadb.PersistentClient(path=CHROMA_DIR)
+    
+    # Parse mesh agents if provided
+    mesh_agents = None
+    if args.mesh:
+        mesh_agents = [agent.strip().lower() for agent in args.mesh.split(',')]
+    
+    # Get collections to query
+    try:
+        collections = get_collection_names(
+            client,
+            agent_name=args.agent.lower() if args.agent else None,
+            mesh_agents=mesh_agents,
+            public_only=args.public_only
+        )
+        
+        if not collections:
+            print("❌ No collections found. Run 'index-digests' first.", file=sys.stderr)
+            sys.exit(1)
+    except Exception as e:
+        print(f"❌ Error loading collections: {e}", file=sys.stderr)
+        sys.exit(1)
+    
+    # Embed query
+    query_embedding = model.encode([args.query])[0].tolist()
+    
+    # Query each collection and merge results
+    all_results = {
+        'documents': [],
+        'metadatas': [],
+        'distances': []
+    }
+    
+    for col_name, collection in collections:
+        try:
+            col_results = collection.query(
+                query_embeddings=[query_embedding],
+                n_results=args.limit,
+                include=["documents", "metadatas", "distances"]
+            )
+            
+            if col_results['documents'][0]:
+                # Tag results with collection name
+                for meta in col_results['metadatas'][0]:
+                    meta['queried_collection'] = col_name
+                
+                all_results['documents'].extend(col_results['documents'][0])
+                all_results['metadatas'].extend(col_results['metadatas'][0])
+                all_results['distances'].extend(col_results['distances'][0])
+        except Exception:
+            # Collection might be empty, skip it
+            pass
+    
+    # Sort by distance (lower = better) and take top N
+    if all_results['documents']:
+        sorted_indices = sorted(
+            range(len(all_results['distances'])),
+            key=lambda i: all_results['distances'][i]
+        )[:args.limit]
+        
+        results = {
+            'documents': [[all_results['documents'][i] for i in sorted_indices]],
+            'metadatas': [[all_results['metadatas'][i] for i in sorted_indices]],
+            'distances': [[all_results['distances'][i] for i in sorted_indices]]
+        }
+    else:
+        results = {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+    
+    if not results['documents'][0]:
+        if args.json:
+            print("[]")
+        else:
+            mode_str = ""
+            if args.mesh:
+                mode_str = f" (mesh: {args.mesh})"
+            elif args.agent:
+                mode_str = f" (agent: {args.agent})"
+            print(f"🔍 No results for: \"{args.query}\"{mode_str}")
+        return
+    
+    if args.json:
+        output = []
+        for i, (doc, meta, dist) in enumerate(zip(
+            results['documents'][0],
+            results['metadatas'][0],
+            results['distances'][0]
+        )):
+            output.append({
+                "rank": i + 1,
+                "source": meta.get('source', 'unknown'),
+                "collection": meta.get('queried_collection', meta.get('collection', 'unknown')),
+                "similarity": round(1 - dist, 3),  # Convert distance to similarity
+                "content": doc
+            })
+        print(json.dumps(output, indent=2))
+    else:
+        mode_str = ""
+        if args.mesh:
+            mode_str = f" (mesh: {args.mesh})"
+        elif args.agent:
+            mode_str = f" (agent: {args.agent})"
+        
+        print(f"🔍 Results for: \"{args.query}\"{mode_str}\n")
+        
+        for i, (doc, meta, dist) in enumerate(zip(
+            results['documents'][0],
+            results['metadatas'][0],
+            results['distances'][0]
+        )):
+            similarity = 1 - dist
+            score_str = f" ({similarity:.1%})" if args.verbose else ""
+            source = meta.get('source', 'unknown')
+            collection_name = meta.get('queried_collection', meta.get('collection', ''))
+            collection_badge = f" [{collection_name}]" if collection_name else ""
+            
+            print(f"━━━ [{i+1}] {source}{collection_badge}{score_str} ━━━")
+            # Truncate long content
+            content = doc[:500] + "..." if len(doc) > 500 else doc
+            print(content)
+            print()
+
+
+if __name__ == "__main__":
+    main()

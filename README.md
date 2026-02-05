@@ -17,6 +17,13 @@ Local RAG (Retrieval-Augmented Generation) system for AI agent memory. Gives you
 - **Shared memory sync** — Bidirectional learning between main and sandboxed agents
 - **Privacy checker** — Scan content for sensitive data before sharing
 
+### New in v0.3.0: Multi-Agent Mesh (JR-19)
+
+- **Multi-agent memory sharing** — N agents can share memory, not just 2
+- **Agent-specific collections** — Each agent gets private memory (`agent_sonnet`, `agent_qwen`, etc.)
+- **Mesh queries** — Query across multiple agents: `recall-mesh "query" --mesh sonnet,qwen,opus`
+- **Backward compatible** — Legacy collections still work
+
 ### New in v0.2.1: Recall Server
 
 - **HTTP API server** — `npx jasper-recall serve` for Docker-isolated agents
@@ -38,6 +45,22 @@ index-digests
 # Process new session logs
 digest-sessions
 ```
+
+### Multi-Agent Mesh (v0.3.0+)
+
+```bash
+# Index memory for specific agents
+index-digests-mesh --agent sonnet
+index-digests-mesh --agent qwen
+
+# Query as specific agent
+recall-mesh "query" --agent sonnet
+
+# Query across multiple agents (mesh mode)
+recall-mesh "query" --mesh sonnet,qwen,opus
+```
+
+See [Multi-Agent Mesh Documentation](docs/MULTI-AGENT-MESH.md) for details.
 
 ## What Gets Indexed
 
@@ -111,6 +134,21 @@ privacy-check --file notes.md    # Check a file
 ```
 
 Detects: emails, API keys, internal IPs, home paths, credentials.
+
+### summarize-old (v0.3.0+)
+
+Compress old memory entries to save tokens:
+
+```bash
+summarize-old                    # Summarize entries older than 30 days
+summarize-old --days 14          # Summarize entries older than 14 days
+summarize-old --dry-run          # Preview what would be summarized
+summarize-old --min-size 1000    # Only summarize files larger than 1000 chars
+```
+
+- Archives originals to `memory/archive/`
+- Rule-based summarization (no LLM required)
+- Preserves headings, bullets, dates, and key markers
 
 ### sync-shared (v0.2.0+)
 
