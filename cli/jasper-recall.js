@@ -139,6 +139,7 @@ USAGE:
 COMMANDS:
   setup       Install dependencies and CLI scripts
   doctor      Run system health check
+              Flags: --fix (auto-repair issues), --dry-run (verbose output)
   recall      Search your memory (alias for the recall command)
   index       Index memory files (alias for index-digests)
   digest      Process session logs (alias for digest-sessions)
@@ -231,7 +232,12 @@ switch (command) {
   case 'doctor':
     // Run system health check
     const { runDoctor } = require('./doctor');
-    process.exit(runDoctor());
+    const args = process.argv.slice(3);
+    const options = {
+      fix: args.includes('--fix'),
+      dryRun: args.includes('--dry-run')
+    };
+    process.exit(runDoctor(options));
     break;
   case 'config':
     // Configuration management

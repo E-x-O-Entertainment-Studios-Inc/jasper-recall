@@ -102,10 +102,20 @@ function countMemoryFiles() {
   }
 }
 
-function runDoctor() {
+function runDoctor(options = {}) {
+  const { fix = false, dryRun = false } = options;
+  const verbose = dryRun;
+  
   console.log('🏥 Jasper Recall Doctor\n');
   
+  if (fix) {
+    console.log('🔧 Fix mode enabled - will attempt to repair issues\n');
+  } else if (dryRun) {
+    console.log('👁️  Dry-run mode - showing what --fix would do\n');
+  }
+  
   const checks = [];
+  const fixes = [];
   
   // Node.js version check
   const nodeResult = exec('node --version');
@@ -115,7 +125,9 @@ function runDoctor() {
     label: 'Node.js',
     status: nodeOk ? '✅' : '❌',
     value: nodeResult.success ? `v${nodeVersion}` : 'not found',
-    ok: nodeOk
+    ok: nodeOk,
+    fixable: false,
+    fixMessage: 'Please upgrade Node.js manually: https://nodejs.org/'
   });
   
   // Python version check
@@ -127,7 +139,32 @@ function runDoctor() {
     label: 'Python',
     status: pythonOk ? '✅' : '❌',
     value: pythonVersion || 'not found',
-    ok: pythonOk
+    ok: pythonOk,
+    fixable: false,
+    fixMessage: 'Please install Python 3: https://www.python.org/downloads/'
+  });
+  
+  // Virtual environment check
+  const venvExists = fs.existsSync(VENV_PATH);
+  checks.push({
+    label: 'Venv',
+    status: venvExists ? '✅' : '❌',
+    value: venvExists ? VENV_PATH : 'not found',
+    ok: venvExists,
+    fixable: !venvExists && pythonOk,
+    fixMessage: !venvExists ? `create virtual environment at ${VENV_PATH}` : null,
+    fixCommand: `python3 -m venv ${VENV_PATH}`,
+    fixAction: () => {
+      console.log(`  🔧 Creating virtual environment...`);
+      const result = exec(`python3 -m venv ${VENV_PATH}`, { silent: false });
+      if (result.success) {
+        console.log(`  ✅ Virtual environment created at ${VENV_PATH}`);
+        return true;
+      } else {
+        console.log(`  ❌ Failed to create virtual environment`);
+        return false;
+      }
+    }
   });
   
   // ChromaDB check
@@ -140,7 +177,21 @@ function runDoctor() {
     label: 'ChromaDB',
     status: chromaOk ? '✅' : '❌',
     value: chromaVersion ? `installed (${chromaVersion})` : 'not installed',
-    ok: chromaOk
+    ok: chromaOk,
+    fixable: !chromaOk && venvExists,
+    fixMessage: !chromaOk ? 'install chromadb via pip' : null,
+    fixCommand: `${pipPath} install chromadb`,
+    fixAction: () => {
+      console.log(`  🔧 Installing ChromaDB...`);
+      const result = exec(`${pipPath} install chromadb`, { silent: false });
+      if (result.success) {
+        console.log(`  ✅ ChromaDB installed successfully`);
+        return true;
+      } else {
+        console.log(`  ❌ Failed to install ChromaDB`);
+        return false;
+      }
+    }
   });
   
   // Sentence-transformers check
@@ -152,16 +203,21 @@ function runDoctor() {
     label: 'Transformers',
     status: transformersOk ? '✅' : '❌',
     value: transformersVersion ? 'sentence-transformers installed' : 'not installed',
-    ok: transformersOk
-  });
-  
-  // Virtual environment check
-  const venvExists = fs.existsSync(VENV_PATH);
-  checks.push({
-    label: 'Venv',
-    status: venvExists ? '✅' : '❌',
-    value: venvExists ? VENV_PATH : 'not found',
-    ok: venvExists
+    ok: transformersOk,
+    fixable: !transformersOk && venvExists,
+    fixMessage: !transformersOk ? 'install sentence-transformers via pip' : null,
+    fixCommand: `${pipPath} install sentence-transformers`,
+    fixAction: () => {
+      console.log(`  🔧 Installing sentence-transformers...`);
+      const result = exec(`${pipPath} install sentence-transformers`, { silent: false });
+      if (result.success) {
+        console.log(`  ✅ sentence-transformers installed successfully`);
+        return true;
+      } else {
+        console.log(`  ❌ Failed to install sentence-transformers`);
+        return false;
+      }
+    }
   });
   
   // ChromaDB directory check
@@ -171,7 +227,21 @@ function runDoctor() {
     label: 'Database',
     status: chromaExists ? '✅' : '❌',
     value: chromaExists ? `${CHROMA_PATH} (${collections} collections)` : 'not found',
-    ok: chromaExists
+    ok: chromaExists,
+    fixable: !chromaExists,
+    fixMessage: !chromaExists ? `create database directory at ${CHROMA_PATH}` : null,
+    fixCommand: `mkdir -p ${CHROMA_PATH}`,
+    fixAction: () => {
+      console.log(`  🔧 Creating ChromaDB directory...`);
+      try {
+        fs.mkdirSync(CHROMA_PATH, { recursive: true });
+        console.log(`  ✅ Created directory: ${CHROMA_PATH}`);
+        return true;
+      } catch (e) {
+        console.log(`  ❌ Failed to create directory: ${e.message}`);
+        return false;
+      }
+    }
   });
   
   // Memory files check
@@ -181,17 +251,47 @@ function runDoctor() {
     label: 'Memory files',
     status: memoryExists ? '✅' : '⚠️',
     value: memoryExists ? `${memoryCount} files in memory/` : 'directory not found',
-    ok: memoryExists
+    ok: memoryExists,
+    fixable: !memoryExists,
+    fixMessage: !memoryExists ? `create memory directory at ${MEMORY_PATH}` : null,
+    fixCommand: `mkdir -p ${MEMORY_PATH}`,
+    fixAction: () => {
+      console.log(`  🔧 Creating memory directory...`);
+      try {
+        fs.mkdirSync(MEMORY_PATH, { recursive: true });
+        console.log(`  ✅ Created directory: ${MEMORY_PATH}`);
+        return true;
+      } catch (e) {
+        console.log(`  ❌ Failed to create directory: ${e.message}`);
+        return false;
+      }
+    }
   });
   
-  // Last index time
+  // Last index time / collections check
   const lastIndexMs = getLastIndexTime();
-  const lastIndexOk = lastIndexMs !== null && lastIndexMs < 7 * 24 * 60 * 60 * 1000; // < 7 days
+  const needsIndex = collections === 0 && chromaExists;
+  const lastIndexOk = !needsIndex && (lastIndexMs !== null && lastIndexMs < 7 * 24 * 60 * 60 * 1000); // < 7 days
   checks.push({
     label: 'Last indexed',
     status: lastIndexMs === null ? '⚠️' : (lastIndexOk ? '✅' : '⚠️'),
-    value: lastIndexMs === null ? 'never' : formatTime(lastIndexMs),
-    ok: lastIndexMs !== null
+    value: needsIndex ? 'no collections - needs initial index' : (lastIndexMs === null ? 'never' : formatTime(lastIndexMs)),
+    ok: lastIndexMs !== null && !needsIndex,
+    fixable: needsIndex,
+    fixMessage: needsIndex ? 'run initial indexing with index-digests' : null,
+    fixCommand: 'index-digests',
+    fixAction: () => {
+      console.log(`  🔧 Running initial index...`);
+      const indexScript = path.join(__dirname, 'index-digests.js');
+      const result = exec(`node ${indexScript}`, { silent: false });
+      if (result.success) {
+        console.log(`  ✅ Initial indexing complete`);
+        return true;
+      } else {
+        console.log(`  ⚠️  Indexing may have completed with warnings`);
+        return true; // Don't treat warnings as failure
+      }
+    }
   });
   
   // Print results
@@ -199,9 +299,65 @@ function runDoctor() {
   for (const check of checks) {
     const padding = ' '.repeat(maxLabelLength - check.label.length);
     console.log(`  ${check.label}:${padding} ${check.status} ${check.value}`);
+    
+    // Show fix suggestions in default/dry-run mode
+    if (!check.ok && !fix) {
+      if (check.fixable && check.fixMessage) {
+        if (verbose && check.fixCommand) {
+          console.log(`    ${dryRun ? '📋' : '→'} Would run: ${check.fixCommand}`);
+        } else {
+          console.log(`    → run with --fix to ${check.fixMessage}`);
+        }
+      } else if (!check.fixable && check.fixMessage) {
+        console.log(`    ❌ ${check.fixMessage}`);
+      }
+    }
   }
   
   console.log('');
+  
+  // Apply fixes if requested
+  if (fix) {
+    const fixableIssues = checks.filter(c => !c.ok && c.fixable && c.fixAction);
+    
+    if (fixableIssues.length === 0) {
+      const unfixableIssues = checks.filter(c => !c.ok && !c.fixable);
+      if (unfixableIssues.length > 0) {
+        console.log('⚠️  Some issues require manual intervention:\n');
+        for (const issue of unfixableIssues) {
+          console.log(`  ❌ ${issue.label}: ${issue.fixMessage}`);
+        }
+        console.log('');
+      }
+    } else {
+      console.log('🔧 Applying fixes...\n');
+      
+      for (const issue of fixableIssues) {
+        const success = issue.fixAction();
+        fixes.push({ issue: issue.label, success });
+        console.log('');
+      }
+      
+      const successCount = fixes.filter(f => f.success).length;
+      const failCount = fixes.filter(f => !f.success).length;
+      
+      if (failCount === 0) {
+        console.log(`✅ All ${successCount} issue${successCount > 1 ? 's' : ''} fixed!\n`);
+      } else {
+        console.log(`⚠️  Fixed ${successCount}/${fixes.length} issues (${failCount} failed)\n`);
+      }
+      
+      // Check for remaining unfixable issues
+      const unfixableIssues = checks.filter(c => !c.ok && !c.fixable);
+      if (unfixableIssues.length > 0) {
+        console.log('⚠️  Remaining issues require manual intervention:\n');
+        for (const issue of unfixableIssues) {
+          console.log(`  ❌ ${issue.label}: ${issue.fixMessage}`);
+        }
+        console.log('');
+      }
+    }
+  }
   
   // Summary
   const allOk = checks.every(c => c.ok);
@@ -210,23 +366,17 @@ function runDoctor() {
     return 0;
   } else {
     const failed = checks.filter(c => !c.ok);
-    console.log(`⚠️  ${failed.length} issue${failed.length > 1 ? 's' : ''} detected.\n`);
     
-    if (!pythonOk) {
-      console.log('→ Install Python 3: https://www.python.org/downloads/');
-    }
-    if (!venvExists || !chromaOk || !transformersOk) {
-      console.log('→ Run: npx jasper-recall setup');
-    }
-    if (!memoryExists) {
-      console.log(`→ Create memory directory: mkdir -p ${MEMORY_PATH}`);
-    }
-    if (lastIndexMs === null || !lastIndexOk) {
-      console.log('→ Index your memory: index-digests');
+    if (!fix) {
+      console.log(`⚠️  ${failed.length} issue${failed.length > 1 ? 's' : ''} detected.\n`);
+      
+      const hasFixableIssues = failed.some(c => c.fixable);
+      if (hasFixableIssues) {
+        console.log('→ Run with --fix to automatically repair issues\n');
+      }
     }
     
-    console.log('');
-    return 1;
+    return fixes.length > 0 && fixes.every(f => f.success) ? 0 : 1;
   }
 }
 
@@ -234,5 +384,11 @@ module.exports = { runDoctor };
 
 // Allow direct execution
 if (require.main === module) {
-  process.exit(runDoctor());
+  const args = process.argv.slice(2);
+  const options = {
+    fix: args.includes('--fix'),
+    dryRun: args.includes('--dry-run')
+  };
+  
+  process.exit(runDoctor(options));
 }
