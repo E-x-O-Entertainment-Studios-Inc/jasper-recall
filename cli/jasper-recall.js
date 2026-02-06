@@ -15,7 +15,9 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const VERSION = '0.2.4';
+// Read version from package.json
+const packageJson = require('../package.json');
+const VERSION = packageJson.version;
 
 // Check for updates in background (non-blocking)
 const { checkInBackground } = require('./update-check');
