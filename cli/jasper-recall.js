@@ -85,7 +85,8 @@ function setup() {
   const scripts = [
     { src: 'recall.py', dest: 'recall', shebang: `#!${path.join(VENV_PATH, 'bin', 'python3')}` },
     { src: 'index-digests.py', dest: 'index-digests', shebang: `#!${path.join(VENV_PATH, 'bin', 'python3')}` },
-    { src: 'digest-sessions.sh', dest: 'digest-sessions', shebang: '#!/bin/bash' }
+    { src: 'digest-sessions.sh', dest: 'digest-sessions', shebang: '#!/bin/bash' },
+    { src: 'summarize-old.py', dest: 'summarize-old', shebang: `#!${path.join(VENV_PATH, 'bin', 'python3')}` }
   ];
   
   for (const script of scripts) {
@@ -138,6 +139,7 @@ COMMANDS:
   recall      Search your memory (alias for the recall command)
   index       Index memory files (alias for index-digests)
   digest      Process session logs (alias for digest-sessions)
+  summarize   Compress old entries to save tokens (alias for summarize-old)
   serve       Start HTTP API server (for sandboxed agents)
   config      Show or set configuration
   update      Check for updates
@@ -192,6 +194,15 @@ switch (command) {
     if (fs.existsSync(digestScript)) {
       const args = process.argv.slice(3);
       spawn(digestScript, args, { stdio: 'inherit' });
+    } else {
+      error('Run "npx jasper-recall setup" first');
+    }
+    break;
+  case 'summarize':
+    const summarizeScript = path.join(BIN_PATH, 'summarize-old');
+    if (fs.existsSync(summarizeScript)) {
+      const args = process.argv.slice(3);
+      spawn(summarizeScript, args, { stdio: 'inherit' });
     } else {
       error('Run "npx jasper-recall setup" first');
     }

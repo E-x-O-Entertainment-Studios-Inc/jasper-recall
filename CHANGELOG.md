@@ -2,6 +2,30 @@
 
 All notable changes to Jasper Recall will be documented in this file.
 
+## [0.3.0] - 2026-02-05
+
+### Added (JR-19: Multi-Agent Mesh)
+- **Multi-agent mesh** — N agents can share memory, not just 2
+- **Agent-specific collections** — Each agent gets its own collection (`agent_sonnet`, `agent_qwen`, etc.)
+- **`recall-mesh` script** — Enhanced recall with `--agent` and `--mesh` flags
+- **`index-digests-mesh` script** — Index into agent-specific collections
+- **Mesh queries** — Query multiple agents' collections: `--mesh sonnet,qwen,opus`
+- **Backward compatibility** — Legacy collections still work (`private_memories`)
+- **Documentation** — Comprehensive guide in `docs/MULTI-AGENT-MESH.md`
+
+### Features
+- `recall-mesh "query" --agent sonnet` — Query as specific agent
+- `recall-mesh "query" --mesh sonnet,qwen` — Query multiple agents
+- `index-digests-mesh --agent sonnet` — Index for specific agent
+- Agent memory remains private by default
+- Shared and learnings collections accessible to all agents
+
+### Technical
+- Each agent collection is isolated in ChromaDB
+- Collections queried in parallel and results merged
+- Relevance-based sorting across all collections
+- Automatic collection creation on first index
+
 ## [0.2.1] - 2026-02-05
 
 ### Added

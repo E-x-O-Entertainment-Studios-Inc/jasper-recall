@@ -21,8 +21,8 @@
 
 ### LOW
 
-- [ ] **JR-18:** Memory summarization (compress old entries to save tokens) - **TODO**
-- [ ] **JR-19:** Multi-agent mesh (N agents sharing memory, not just 2) - **TODO**
+- [x] **JR-18:** Memory summarization (compress old entries to save tokens) - **DONE @QWEN done:2026-02-05 20m**
+- [x] **JR-19:** Multi-agent mesh (N agents sharing memory, not just 2) `branch:feat/jr-19-multi-agent-mesh` - **DONE @SONNET done:2026-02-05 45m**
 
 ---
 
