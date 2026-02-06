@@ -252,6 +252,74 @@ export RECALL_SESSIONS_DIR=~/.openclaw/agents/main/sessions
 export RECALL_VENV=~/.openclaw/rag-env
 ```
 
+## OpenClaw Plugin (v0.4.0+)
+
+Jasper Recall includes an OpenClaw plugin with **auto-recall** — automatically inject relevant memories before every message is processed.
+
+### Installation
+
+```bash
+# Full setup including plugin
+npx jasper-recall setup
+```
+
+Add to `openclaw.json`:
+
+```json
+{
+  "plugins": {
+    "load": {
+      "paths": [
+        "/path/to/jasper-recall/extensions/openclaw-plugin"
+      ]
+    },
+    "entries": {
+      "jasper-recall": {
+        "enabled": true,
+        "config": {
+          "autoRecall": true,
+          "minScore": 0.3,
+          "defaultLimit": 5
+        }
+      }
+    }
+  }
+}
+```
+
+### Auto-Recall
+
+When `autoRecall: true`, the plugin hooks into `before_agent_start` and:
+
+1. Takes the incoming message
+2. Searches ChromaDB for relevant memories
+3. Filters by `minScore` (default 30% similarity)
+4. Injects results as `<relevant-memories>` context
+
+```xml
+<relevant-memories>
+The following memories may be relevant to this conversation:
+- [memory/2026-02-05.md] Worker orchestration decisions...
+- [MEMORY.md] Git workflow: feature → develop → main...
+</relevant-memories>
+```
+
+### Plugin Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `autoRecall` | `false` | Auto-inject memories before processing |
+| `minScore` | `0.3` | Minimum similarity (0-1) for auto-recall |
+| `defaultLimit` | `5` | Max results for tool/auto-recall |
+| `publicOnly` | `false` | Restrict to public memory (sandboxed) |
+
+### Tools & Commands
+
+The plugin registers:
+- `recall` tool — semantic search from agent code
+- `/recall <query>` — quick search from chat
+- `/index` — re-index memory files
+
 ## OpenClaw Integration
 
 Add to your agent's HEARTBEAT.md for automatic memory maintenance:
