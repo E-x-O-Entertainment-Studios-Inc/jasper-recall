@@ -150,6 +150,36 @@ summarize-old --min-size 1000    # Only summarize files larger than 1000 chars
 - Rule-based summarization (no LLM required)
 - Preserves headings, bullets, dates, and key markers
 
+### doctor (v0.3.2+)
+
+System health check and auto-repair:
+
+```bash
+npx jasper-recall doctor              # Check system health (default)
+npx jasper-recall doctor --fix        # Auto-repair issues
+npx jasper-recall doctor --dry-run    # Verbose mode, show exact commands
+```
+
+**Default mode** (no flags):
+- Shows ✅/⚠️/❌ status for all checks
+- For issues found, suggests what `--fix` would do
+- Example: `❌ ChromaDB not installed → run with --fix to install`
+
+**Fix mode** (`--fix`):
+- Automatically repairs fixable issues:
+  - Creates Python venv if missing: `python3 -m venv ~/.openclaw/rag-env`
+  - Installs ChromaDB: `pip install chromadb`
+  - Installs sentence-transformers: `pip install sentence-transformers`
+  - Creates required directories (chroma-db, memory)
+  - Runs initial index if no collections exist
+- Shows what it fixed: `🔧 Installed ChromaDB via pip`
+- Non-fixable issues show manual instructions: `❌ Node.js <18 — please upgrade manually`
+
+**Dry-run mode** (`--dry-run`):
+- Same as default, but more verbose
+- Shows exact commands that `--fix` would run
+- Example: `Would run: ~/.openclaw/rag-env/bin/pip install chromadb`
+
 ### sync-shared (v0.2.0+)
 
 Extract `[public]` tagged entries to shared memory:
