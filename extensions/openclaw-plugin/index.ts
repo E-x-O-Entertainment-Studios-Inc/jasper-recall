@@ -3,6 +3,11 @@
  * 
  * Semantic search over indexed memory using ChromaDB.
  * "Remember everything. Recall what matters."
+ * 
+ * Features:
+ * - `recall` tool for manual searches
+ * - `/recall` command for quick lookups
+ * - Auto-recall: inject relevant memories before agent processing
  */
 
 import { execSync } from 'child_process';
@@ -14,6 +19,7 @@ interface PluginConfig {
   autoRecall?: boolean;
   defaultLimit?: number;
   publicOnly?: boolean;
+  minScore?: number;
   logLevel?: 'debug' | 'info' | 'warn' | 'error';
 }
 
@@ -36,6 +42,7 @@ interface PluginApi {
   registerTool: (tool: any) => void;
   registerCommand: (cmd: any) => void;
   registerGatewayMethod: (name: string, handler: any) => void;
+  on: (event: string, handler: (event: any) => Promise<any>) => void;
 }
 
 const BIN_PATH = path.join(os.homedir(), '.local', 'bin');
@@ -64,10 +71,64 @@ export default function register(api: PluginApi) {
 
   const defaultLimit = cfg.defaultLimit ?? 5;
   const publicOnly = cfg.publicOnly ?? false;
+  const autoRecall = cfg.autoRecall ?? false;
+  const minScore = cfg.minScore ?? 0.3;
 
-  api.logger.info(`[jasper-recall] Initialized (limit=${defaultLimit}, publicOnly=${publicOnly})`);
+  api.logger.info(`[jasper-recall] Initialized (limit=${defaultLimit}, publicOnly=${publicOnly}, autoRecall=${autoRecall})`);
 
-  // Register the recall tool
+  // ============================================================================
+  // Auto-Recall: inject relevant memories before agent processes the message
+  // ============================================================================
+  
+  if (autoRecall) {
+    api.on('before_agent_start', async (event: { prompt?: string }) => {
+      // Skip if no prompt or too short
+      if (!event.prompt || event.prompt.length < 10) {
+        return;
+      }
+
+      // Skip system/internal prompts
+      if (event.prompt.startsWith('HEARTBEAT') || event.prompt.includes('NO_REPLY')) {
+        return;
+      }
+
+      try {
+        const results = runRecall(event.prompt, {
+          limit: 3,
+          json: true,
+          publicOnly,
+        });
+
+        const parsed = JSON.parse(results);
+        
+        // Filter by minimum score
+        const relevant = parsed.filter((r: any) => r.score >= minScore);
+
+        if (relevant.length === 0) {
+          api.logger.debug?.('[jasper-recall] No relevant memories found for auto-recall');
+          return;
+        }
+
+        // Format memories for context injection
+        const memoryContext = relevant
+          .map((r: any) => `- [${r.source || 'memory'}] ${r.content.slice(0, 500)}${r.content.length > 500 ? '...' : ''}`)
+          .join('\n');
+
+        api.logger.info(`[jasper-recall] Auto-injecting ${relevant.length} memories into context`);
+
+        return {
+          prependContext: `<relevant-memories>\nThe following memories may be relevant to this conversation:\n${memoryContext}\n</relevant-memories>`,
+        };
+      } catch (err: any) {
+        api.logger.warn(`[jasper-recall] Auto-recall failed: ${err.message}`);
+      }
+    });
+  }
+
+  // ============================================================================
+  // Tool: recall
+  // ============================================================================
+
   api.registerTool({
     name: 'recall',
     description: 'Semantic search over indexed memory (daily notes, session digests, documentation). Use to find context from past conversations, decisions, and learnings.',
@@ -118,7 +179,10 @@ export default function register(api: PluginApi) {
     },
   });
 
-  // Register /recall command for manual searches
+  // ============================================================================
+  // Command: /recall
+  // ============================================================================
+
   api.registerCommand({
     name: 'recall',
     description: 'Search memory for relevant context',
@@ -139,7 +203,10 @@ export default function register(api: PluginApi) {
     },
   });
 
-  // Register /index command to re-index memory
+  // ============================================================================
+  // Command: /index
+  // ============================================================================
+
   api.registerCommand({
     name: 'index',
     description: 'Re-index memory files into ChromaDB',
@@ -156,7 +223,10 @@ export default function register(api: PluginApi) {
     },
   });
 
-  // Register RPC methods for external integrations
+  // ============================================================================
+  // RPC Methods
+  // ============================================================================
+
   api.registerGatewayMethod('recall.search', async ({ params, respond }: any) => {
     try {
       const { query, limit } = params;
