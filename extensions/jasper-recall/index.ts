@@ -10,7 +10,7 @@
  * - Auto-recall: inject relevant memories before agent processing
  */
 
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
 
@@ -55,10 +55,14 @@ function runRecall(query: string, options: { limit?: number; json?: boolean; pub
   
   const recallPath = path.join(BIN_PATH, 'recall');
   try {
-    return execSync(`${recallPath} ${args.join(' ')}`, { encoding: 'utf8', timeout: 30000 });
+    return execFileSync(recallPath, args, { encoding: 'utf8', timeout: 30000 });
   } catch (err: any) {
     throw new Error(`Recall failed: ${err.message}`);
   }
+}
+
+function getSimilarity(result: any): number {
+  return typeof result?.similarity === 'number' ? result.similarity : result?.score ?? 0;
 }
 
 export default function register(api: PluginApi) {
@@ -102,7 +106,7 @@ export default function register(api: PluginApi) {
         const parsed = JSON.parse(results);
         
         // Filter by minimum score
-        const relevant = parsed.filter((r: any) => r.score >= minScore);
+        const relevant = parsed.filter((r: any) => getSimilarity(r) >= minScore);
 
         if (relevant.length === 0) {
           api.logger.debug?.('[jasper-recall] No relevant memories found for auto-recall');
@@ -164,7 +168,7 @@ export default function register(api: PluginApi) {
         } else {
           for (const result of parsed) {
             formatted += `### ${result.source || 'Memory'}\n`;
-            formatted += `**Score:** ${(result.score * 100).toFixed(1)}%\n\n`;
+            formatted += `**Similarity:** ${(getSimilarity(result) * 100).toFixed(1)}%\n\n`;
             formatted += `${result.content}\n\n---\n\n`;
           }
         }
