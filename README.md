@@ -270,7 +270,7 @@ Add to `openclaw.json`:
   "plugins": {
     "load": {
       "paths": [
-        "/path/to/jasper-recall/extensions/openclaw-plugin"
+        "/path/to/jasper-recall/extensions/jasper-recall"
       ]
     },
     "entries": {
