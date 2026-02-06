@@ -138,6 +138,7 @@ USAGE:
 
 COMMANDS:
   setup       Install dependencies and CLI scripts
+  doctor      Run system health check
   recall      Search your memory (alias for the recall command)
   index       Index memory files (alias for index-digests)
   digest      Process session logs (alias for digest-sessions)
@@ -226,6 +227,11 @@ switch (command) {
         console.log('Could not check for updates');
       }
     });
+    break;
+  case 'doctor':
+    // Run system health check
+    const { runDoctor } = require('./doctor');
+    process.exit(runDoctor());
     break;
   case 'config':
     // Configuration management
