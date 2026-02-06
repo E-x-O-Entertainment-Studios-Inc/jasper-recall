@@ -1,0 +1,44 @@
+{
+  "id": "jasper-recall",
+  "name": "Jasper Recall - Local RAG Memory",
+  "version": "0.1.0",
+  "description": "Semantic search over indexed memory using ChromaDB",
+  "homepage": "https://github.com/E-x-O-Entertainment-Studios-Inc/jasper-recall",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "autoRecall": {
+        "type": "boolean",
+        "default": false,
+        "description": "Automatically run recall on incoming messages (experimental)"
+      },
+      "defaultLimit": {
+        "type": "number",
+        "default": 5,
+        "description": "Default number of results to return"
+      },
+      "publicOnly": {
+        "type": "boolean",
+        "default": false,
+        "description": "Only search public memory (for sandboxed agents)"
+      },
+      "logLevel": {
+        "type": "string",
+        "enum": ["debug", "info", "warn", "error"],
+        "default": "info"
+      }
+    }
+  },
+  "uiHints": {
+    "enabled": { "label": "Enable Jasper Recall" },
+    "autoRecall": { "label": "Auto-Recall on Messages" },
+    "defaultLimit": { "label": "Default Result Limit" },
+    "publicOnly": { "label": "Public Memory Only" },
+    "logLevel": { "label": "Log Level" }
+  }
+}
