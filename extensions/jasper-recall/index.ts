@@ -98,10 +98,13 @@ export default function register(api: PluginApi) {
       const prompt = event.prompt;
       
       // Detect fresh session (after /new or first message)
-      const isFreshSession = event.isNewSession || 
+      // Only trust explicit isNewSession flag, or messageCount if provided
+      const isFreshSession = event.isNewSession === true || 
                              event.messageCount === 0 || 
-                             event.messageCount === 1 ||
-                             (event.context?.messages?.length ?? 0) <= 1;
+                             event.messageCount === 1;
+      
+      // Debug logging
+      api.logger.debug?.(`[jasper-recall] Fresh session check: isNewSession=${event.isNewSession}, messageCount=${event.messageCount}, result=${isFreshSession}`);
 
       // Skip heartbeats and system prompts
       if (prompt.startsWith('HEARTBEAT') || 
