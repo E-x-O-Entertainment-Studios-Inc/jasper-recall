@@ -382,9 +382,69 @@ function runDoctor(options = {}) {
 
 module.exports = { runDoctor };
 
+// JSON output for integration with exo doctor
+function runDoctorJson() {
+  const checks = {};
+  let status = 'healthy';
+  
+  // Node.js
+  const nodeResult = exec('node --version');
+  checks.node = nodeResult.success ? nodeResult.output.trim() : 'missing';
+  
+  // Python
+  const pythonResult = exec('python3 --version');
+  const pythonMatch = pythonResult.output.match(/Python ([\d.]+)/);
+  checks.python = pythonMatch ? pythonMatch[1] : 'missing';
+  
+  // Venv
+  checks.venv = fs.existsSync(VENV_PATH) ? 'ok' : 'missing';
+  if (checks.venv === 'missing') status = 'degraded';
+  
+  // ChromaDB
+  const pipPath = path.join(VENV_PATH, 'bin', 'pip');
+  const chromaResult = exec(`${pipPath} show chromadb 2>/dev/null`);
+  const chromaMatch = chromaResult.output.match(/Version: ([\d.]+)/);
+  checks.chromadb = chromaMatch ? chromaMatch[1] : 'missing';
+  if (checks.chromadb === 'missing') status = 'degraded';
+  
+  // Database
+  const chromaExists = fs.existsSync(CHROMA_PATH);
+  const collections = countCollections();
+  checks.database = chromaExists ? `${collections} collections` : 'missing';
+  if (!chromaExists) status = 'error';
+  
+  // Memory files
+  const memoryCount = countMemoryFiles();
+  checks.indexed = memoryCount;
+  
+  // Last index time
+  const lastIndexMs = getLastIndexTime();
+  checks.lastIndex = lastIndexMs ? formatTime(lastIndexMs) : 'never';
+  
+  // Get version
+  let version = 'unknown';
+  try {
+    version = require('../package.json').version;
+  } catch {}
+  
+  return {
+    status,
+    version,
+    checks
+  };
+}
+
+module.exports = { runDoctor, runDoctorJson };
+
 // Allow direct execution
 if (require.main === module) {
   const args = process.argv.slice(2);
+  
+  if (args.includes('--json')) {
+    console.log(JSON.stringify(runDoctorJson(), null, 2));
+    process.exit(0);
+  }
+  
   const options = {
     fix: args.includes('--fix'),
     dryRun: args.includes('--dry-run')
