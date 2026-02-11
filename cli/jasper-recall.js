@@ -209,17 +209,19 @@ USAGE:
   npx jasper-recall <command>
 
 COMMANDS:
-  setup       Install dependencies and CLI scripts
-  doctor      Run system health check
-              Flags: --fix (auto-repair issues), --dry-run (verbose output)
-  recall      Search your memory (alias for the recall command)
-  index       Index memory files (alias for index-digests)
-  digest      Process session logs (alias for digest-sessions)
-  summarize   Compress old entries to save tokens (alias for summarize-old)
-  serve       Start HTTP API server (for sandboxed agents)
-  config      Show or set configuration
-  update      Check for updates
-  help        Show this help message
+  setup           Install dependencies and CLI scripts
+  doctor          Run system health check
+                  Flags: --fix (auto-repair issues), --dry-run (verbose output)
+  recall          Search your memory (alias for the recall command)
+  index           Index memory files (alias for index-digests)
+  digest          Process session logs (alias for digest-sessions)
+  summarize       Compress old entries to save tokens (alias for summarize-old)
+  serve           Start HTTP API server (for sandboxed agents)
+  config          Show or set configuration
+  update          Check for updates
+  moltbook-setup  Configure moltbook agent with --public-only restriction
+  moltbook-verify Verify moltbook agent setup
+  help            Show this help message
 
 CONFIGURATION:
   Config file: ~/.jasper-recall/config.json
@@ -310,6 +312,17 @@ switch (command) {
       dryRun: args.includes('--dry-run')
     };
     process.exit(runDoctor(options));
+    break;
+  case 'moltbook-setup':
+  case 'moltbook':
+    // Set up moltbook agent integration
+    process.argv = [process.argv[0], process.argv[1], 'setup'];
+    require('../extensions/moltbook-setup/setup.js');
+    break;
+  case 'moltbook-verify':
+    // Verify moltbook agent setup
+    process.argv = [process.argv[0], process.argv[1], 'verify'];
+    require('../extensions/moltbook-setup/setup.js');
     break;
   case 'config':
     // Configuration management

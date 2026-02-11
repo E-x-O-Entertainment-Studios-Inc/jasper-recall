@@ -197,6 +197,32 @@ recall "product info" --public-only
 recall "product info"
 ```
 
+### Moltbook Agent Setup (v0.4.0+)
+
+For the moltbook-scanner (or any sandboxed agent), use the built-in setup:
+
+```bash
+# Configure sandboxed agent with --public-only restriction
+npx jasper-recall moltbook-setup
+
+# Verify the setup is correct
+npx jasper-recall moltbook-verify
+```
+
+This creates:
+- `~/bin/recall` — Wrapper that forces `--public-only` flag
+- `shared/` — Symlink to main workspace's shared memory
+
+The sandboxed agent can then use:
+```bash
+~/bin/recall "query"  # Automatically restricted to public memories
+```
+
+**Privacy model:**
+1. Main agent tags memories as `[public]` or `[private]` in daily notes
+2. `sync-shared` extracts `[public]` content to `memory/shared/`
+3. Sandboxed agents can ONLY search the `shared` collection
+
 ### Privacy Workflow
 
 ```bash
