@@ -61,19 +61,33 @@ function setupOpenClawIntegration() {
     return false;
   }
   
-  // Install SKILL.md to skills directory
-  const skillSrc = path.join(EXTENSIONS_DIR, 'openclaw-plugin', 'SKILL.md');
+  // Install plugin files to ~/.openclaw/extensions/jasper-recall/
+  const OPENCLAW_EXTENSIONS = path.join(openclawDir, 'extensions', 'jasper-recall');
+  const pluginSrcDir = path.join(EXTENSIONS_DIR, 'jasper-recall');
+  
+  fs.mkdirSync(OPENCLAW_EXTENSIONS, { recursive: true });
+  
+  const pluginFiles = ['index.ts', 'openclaw.plugin.json', 'package.json', 'SKILL.md'];
+  for (const file of pluginFiles) {
+    const src = path.join(pluginSrcDir, file);
+    const dest = path.join(OPENCLAW_EXTENSIONS, file);
+    if (fs.existsSync(src)) {
+      fs.copyFileSync(src, dest);
+    }
+  }
+  console.log(`  ✓ Installed plugin files: ${OPENCLAW_EXTENSIONS}`);
+  
+  // Install SKILL.md to skills directory (for agent discovery)
+  const skillSrc = path.join(pluginSrcDir, 'SKILL.md');
   const skillDest = path.join(OPENCLAW_SKILLS, 'jasper-recall', 'SKILL.md');
   
   if (fs.existsSync(skillSrc)) {
     fs.mkdirSync(path.dirname(skillDest), { recursive: true });
     fs.copyFileSync(skillSrc, skillDest);
     console.log(`  ✓ Installed SKILL.md: ${skillDest}`);
-  } else {
-    console.log('  ⚠ SKILL.md not found in package (try reinstalling)');
   }
   
-  // Update openclaw.json with plugin config
+  // Update openclaw.json with plugin config AND path
   if (fs.existsSync(OPENCLAW_CONFIG)) {
     try {
       const configRaw = fs.readFileSync(OPENCLAW_CONFIG, 'utf8');
@@ -82,6 +96,14 @@ function setupOpenClawIntegration() {
       // Initialize plugins structure if needed
       if (!config.plugins) config.plugins = {};
       if (!config.plugins.entries) config.plugins.entries = {};
+      if (!config.plugins.load) config.plugins.load = {};
+      if (!config.plugins.load.paths) config.plugins.load.paths = [];
+      
+      // Add plugin path if not already present
+      if (!config.plugins.load.paths.includes(OPENCLAW_EXTENSIONS)) {
+        config.plugins.load.paths.push(OPENCLAW_EXTENSIONS);
+        console.log(`  ✓ Added plugin path to plugins.load.paths`);
+      }
       
       // Check if already configured
       if (config.plugins.entries['jasper-recall']) {
@@ -96,12 +118,13 @@ function setupOpenClawIntegration() {
             defaultLimit: 5
           }
         };
-        
-        // Write back with nice formatting
-        fs.writeFileSync(OPENCLAW_CONFIG, JSON.stringify(config, null, 2) + '\n');
-        console.log('  ✓ Added jasper-recall plugin to openclaw.json');
-        console.log('  → Restart OpenClaw gateway to activate: openclaw gateway restart');
+        console.log('  ✓ Added jasper-recall plugin config');
       }
+      
+      // Write back with nice formatting
+      fs.writeFileSync(OPENCLAW_CONFIG, JSON.stringify(config, null, 2) + '\n');
+      console.log('  → Restart OpenClaw gateway to activate: openclaw gateway restart');
+      
     } catch (e) {
       console.log(`  ⚠ Could not update openclaw.json: ${e.message}`);
       console.log('  → Manually add plugin config (see docs)');
@@ -198,6 +221,10 @@ function setup() {
   console.log('  1. index-digests     # Index your memory files');
   console.log('  2. recall "query"    # Search your memory');
   console.log('  3. digest-sessions   # Process session logs');
+  console.log('');
+  console.log('🔄 To set up automatic indexing cron jobs:');
+  console.log('   Run /jasper-recall setup in your OpenClaw chat');
+  console.log('   Then ask your agent to create the cron jobs for you');
   console.log('');
   
   // Check for sandboxed agents

@@ -10,7 +10,8 @@
  * - Auto-recall: inject relevant memories before agent processing
  */
 
-import { execFileSync, execSync } from 'child_process';
+import { execSync } from 'child_process';
+import { readFileSync, existsSync } from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
@@ -55,14 +56,10 @@ function runRecall(query: string, options: { limit?: number; json?: boolean; pub
   
   const recallPath = path.join(BIN_PATH, 'recall');
   try {
-    return execFileSync(recallPath, args, { encoding: 'utf8', timeout: 30000 });
+    return execSync(`${recallPath} ${args.join(' ')}`, { encoding: 'utf8', timeout: 30000 });
   } catch (err: any) {
     throw new Error(`Recall failed: ${err.message}`);
   }
-}
-
-function getSimilarity(result: any): number {
-  return typeof result?.similarity === 'number' ? result.similarity : result?.score ?? 0;
 }
 
 export default function register(api: PluginApi) {
@@ -85,18 +82,85 @@ export default function register(api: PluginApi) {
   // ============================================================================
   
   if (autoRecall) {
-    api.on('before_agent_start', async (event: { prompt?: string }) => {
+    api.on('before_agent_start', async (event: { 
+      prompt?: string; 
+      senderId?: string; 
+      source?: string;
+      isNewSession?: boolean;
+      messageCount?: number;
+      context?: { messages?: any[] };
+    }) => {
       // Skip if no prompt or too short
       if (!event.prompt || event.prompt.length < 10) {
         return;
       }
 
-      // Skip system/internal prompts
-      if (event.prompt.startsWith('HEARTBEAT') || event.prompt.includes('NO_REPLY')) {
+      const prompt = event.prompt;
+      
+      // Detect fresh session (after /new or first message)
+      const isFreshSession = event.isNewSession || 
+                             event.messageCount === 0 || 
+                             event.messageCount === 1 ||
+                             (event.context?.messages?.length ?? 0) <= 1;
+
+      // Skip heartbeats and system prompts
+      if (prompt.startsWith('HEARTBEAT') || 
+          prompt.startsWith('Read HEARTBEAT.md') ||
+          prompt.includes('NO_REPLY') ||
+          prompt.includes('HEARTBEAT_OK')) {
+        return;
+      }
+
+      // Skip agent-to-agent messages (cron jobs, workers, spawned agents)
+      if (event.source?.startsWith('cron:') ||
+          event.source?.startsWith('agent:') ||
+          event.source?.startsWith('spawn:') ||
+          event.source === 'sessions_send' ||
+          event.senderId?.startsWith('agent:') ||
+          event.senderId?.startsWith('worker-')) {
+        return;
+      }
+
+      // Skip common automated patterns
+      if (prompt.startsWith('Agent-to-agent') ||
+          prompt.startsWith('📋 PR Review') ||
+          prompt.startsWith('🤖 Codex Watch') ||
+          prompt.startsWith('ANNOUNCE_')) {
         return;
       }
 
       try {
+        let prependParts: string[] = [];
+        
+        // If fresh session, inject identity files directly into context
+        if (isFreshSession) {
+          api.logger.info('[jasper-recall] Fresh session detected - injecting identity context');
+          
+          const workspace = path.join(os.homedir(), '.openclaw', 'workspace');
+          const identityFiles = ['IDENTITY.md', 'SOUL.md', 'USER.md'];
+          const identityParts: string[] = [];
+          
+          for (const file of identityFiles) {
+            const filePath = path.join(workspace, file);
+            if (existsSync(filePath)) {
+              try {
+                const content = readFileSync(filePath, 'utf8');
+                identityParts.push(`### ${file}\n${content}`);
+              } catch (err: any) {
+                api.logger.warn(`[jasper-recall] Failed to read ${file}: ${err.message}`);
+              }
+            }
+          }
+          
+          if (identityParts.length > 0) {
+            prependParts.push(`<session-identity>
+🔄 **Fresh session.** Your identity files:
+
+${identityParts.join('\n\n---\n\n')}
+</session-identity>`);
+          }
+        }
+        
         const results = runRecall(event.prompt, {
           limit: 3,
           json: true,
@@ -106,25 +170,60 @@ export default function register(api: PluginApi) {
         const parsed = JSON.parse(results);
         
         // Filter by minimum score
-        const relevant = parsed.filter((r: any) => getSimilarity(r) >= minScore);
+        const relevant = parsed.filter((r: any) => r.score >= minScore);
 
-        if (relevant.length === 0) {
+        if (relevant.length > 0) {
+          // Format memories for context injection
+          const memoryContext = relevant
+            .map((r: any) => `- [${r.source || 'memory'}] ${r.content.slice(0, 500)}${r.content.length > 500 ? '...' : ''}`)
+            .join('\n');
+
+          api.logger.info(`[jasper-recall] Auto-injecting ${relevant.length} memories into context`);
+
+          prependParts.push(`<relevant-memories>
+The following memories may be relevant to this conversation:
+${memoryContext}
+</relevant-memories>`);
+        } else {
           api.logger.debug?.('[jasper-recall] No relevant memories found for auto-recall');
-          return;
         }
 
-        // Format memories for context injection
-        const memoryContext = relevant
-          .map((r: any) => `- [${r.source || 'memory'}] ${r.content.slice(0, 500)}${r.content.length > 500 ? '...' : ''}`)
-          .join('\n');
-
-        api.logger.info(`[jasper-recall] Auto-injecting ${relevant.length} memories into context`);
-
-        return {
-          prependContext: `<relevant-memories>\nThe following memories may be relevant to this conversation:\n${memoryContext}\n</relevant-memories>`,
-        };
+        if (prependParts.length > 0) {
+          return {
+            prependContext: prependParts.join('\n\n'),
+          };
+        }
       } catch (err: any) {
         api.logger.warn(`[jasper-recall] Auto-recall failed: ${err.message}`);
+        
+        // Still inject identity context on fresh session even if recall fails
+        if (isFreshSession) {
+          const workspace = path.join(os.homedir(), '.openclaw', 'workspace');
+          const identityFiles = ['IDENTITY.md', 'SOUL.md', 'USER.md'];
+          const identityParts: string[] = [];
+          
+          for (const file of identityFiles) {
+            const filePath = path.join(workspace, file);
+            if (existsSync(filePath)) {
+              try {
+                const content = readFileSync(filePath, 'utf8');
+                identityParts.push(`### ${file}\n${content}`);
+              } catch {
+                // Skip unreadable files
+              }
+            }
+          }
+          
+          if (identityParts.length > 0) {
+            return {
+              prependContext: `<session-identity>
+🔄 **Fresh session.** Your identity files:
+
+${identityParts.join('\n\n---\n\n')}
+</session-identity>`,
+            };
+          }
+        }
       }
     });
   }
@@ -168,7 +267,7 @@ export default function register(api: PluginApi) {
         } else {
           for (const result of parsed) {
             formatted += `### ${result.source || 'Memory'}\n`;
-            formatted += `**Similarity:** ${(getSimilarity(result) * 100).toFixed(1)}%\n\n`;
+            formatted += `**Score:** ${(result.score * 100).toFixed(1)}%\n\n`;
             formatted += `${result.content}\n\n---\n\n`;
           }
         }
@@ -224,6 +323,99 @@ export default function register(api: PluginApi) {
       } catch (err: any) {
         return { text: `❌ Index failed: ${err.message}` };
       }
+    },
+  });
+
+  // ============================================================================
+  // Command: /jasper-recall setup
+  // ============================================================================
+
+  api.registerCommand({
+    name: 'jasper-recall',
+    description: 'Jasper Recall setup and status',
+    acceptsArgs: true,
+    requireAuth: true,
+    handler: async (ctx: { args?: string }) => {
+      const subcommand = ctx.args?.trim().toLowerCase();
+      
+      if (subcommand === 'setup') {
+        return {
+          text: `🧠 **Jasper Recall Setup**
+
+**Current status:**
+- Auto-recall: ${autoRecall ? '✅ Enabled' : '❌ Disabled'}
+- Public-only mode: ${publicOnly ? '✅ Yes' : '❌ No (full access)'}
+- Default limit: ${defaultLimit} results
+- Min score: ${minScore}
+
+---
+
+<agent-action required="true">
+**CREATE THESE CRON JOBS NOW:**
+
+1. **Index memories every 6 hours:**
+   - Name: "jasper-recall-index"
+   - Schedule: \`{ "kind": "cron", "expr": "0 */6 * * *" }\`
+   - Payload: \`{ "kind": "systemEvent", "text": "Run index-digests to update jasper-recall ChromaDB index" }\`
+   - Session target: "main"
+
+2. **Digest sessions daily at 4am:**
+   - Name: "jasper-recall-digest"  
+   - Schedule: \`{ "kind": "cron", "expr": "0 4 * * *" }\`
+   - Payload: \`{ "kind": "systemEvent", "text": "Run digest-sessions to extract summaries from recent session logs into memory" }\`
+   - Session target: "main"
+
+Use the \`cron\` tool with \`action: "add"\` to create both jobs.
+</agent-action>`,
+        };
+      }
+      
+      if (subcommand === 'status') {
+        try {
+          // Check if ChromaDB is accessible
+          const testResult = runRecall('test query', { limit: 1, json: true, publicOnly });
+          const parsed = JSON.parse(testResult);
+          
+          return {
+            text: `🧠 **Jasper Recall Status**
+
+**Plugin:** ✅ Active
+**Auto-recall:** ${autoRecall ? '✅ Enabled' : '❌ Disabled'}
+**ChromaDB:** ✅ Connected
+**Index size:** ${parsed.length > 0 ? 'Has data' : 'Empty or minimal'}
+
+**Config:**
+- Public-only: ${publicOnly}
+- Default limit: ${defaultLimit}
+- Min score: ${minScore}`,
+          };
+        } catch (err: any) {
+          return {
+            text: `🧠 **Jasper Recall Status**
+
+**Plugin:** ✅ Active
+**Auto-recall:** ${autoRecall ? '✅ Enabled' : '❌ Disabled'}
+**ChromaDB:** ❌ Error - ${err.message}
+
+Run \`npx jasper-recall setup\` to install dependencies.`,
+          };
+        }
+      }
+      
+      // Default: show help
+      return {
+        text: `🧠 **Jasper Recall**
+
+**Commands:**
+- \`/jasper-recall setup\` — Setup instructions & cron jobs
+- \`/jasper-recall status\` — Check plugin status
+- \`/recall <query>\` — Search memory
+- \`/index\` — Re-index memory files
+
+**CLI:**
+- \`npx jasper-recall setup\` — Install Python dependencies
+- \`npx jasper-recall doctor\` — Health check`,
+      };
     },
   });
 
