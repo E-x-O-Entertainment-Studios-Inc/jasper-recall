@@ -35,6 +35,29 @@ This creates:
 - Python venv at `~/.openclaw/rag-env`
 - ChromaDB database at `~/.openclaw/chroma-db`
 - CLI scripts in `~/.local/bin/`
+- OpenClaw plugin config in `openclaw.json`
+
+### Why Python?
+
+The core search and embedding functionality uses Python libraries:
+
+- **ChromaDB** — Vector database for semantic search
+- **sentence-transformers** — Local embedding models (no API needed)
+
+These are the gold standard for local RAG. There are no good Node.js equivalents that work fully offline.
+
+### Why a Separate Venv?
+
+The venv at `~/.openclaw/rag-env` provides:
+
+| Benefit | Why It Matters |
+|---------|----------------|
+| **Isolation** | Won't conflict with your other Python projects |
+| **No sudo** | Installs to your home directory, no root needed |
+| **Clean uninstall** | Delete the folder and it's gone |
+| **Reproducibility** | Same versions everywhere |
+
+The dependencies are heavy (~200MB total with the embedding model), but this is a one-time download that runs entirely locally.
 
 ### Basic Usage
 
