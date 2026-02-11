@@ -26,6 +26,9 @@ const VENV_PATH = path.join(os.homedir(), '.openclaw', 'rag-env');
 const CHROMA_PATH = path.join(os.homedir(), '.openclaw', 'chroma-db');
 const BIN_PATH = path.join(os.homedir(), '.local', 'bin');
 const SCRIPTS_DIR = path.join(__dirname, '..', 'scripts');
+const EXTENSIONS_DIR = path.join(__dirname, '..', 'extensions');
+const OPENCLAW_CONFIG = path.join(os.homedir(), '.openclaw', 'openclaw.json');
+const OPENCLAW_SKILLS = path.join(os.homedir(), '.openclaw', 'workspace', 'skills');
 
 function log(msg) {
   console.log(`🦊 ${msg}`);
@@ -45,6 +48,70 @@ function run(cmd, opts = {}) {
     }
     return null;
   }
+}
+
+function setupOpenClawIntegration() {
+  log('Setting up OpenClaw integration...');
+  
+  // Check if OpenClaw is installed
+  const openclawDir = path.join(os.homedir(), '.openclaw');
+  if (!fs.existsSync(openclawDir)) {
+    console.log('  ⚠ OpenClaw not detected (~/.openclaw not found)');
+    console.log('  → Skipping OpenClaw integration');
+    return false;
+  }
+  
+  // Install SKILL.md to skills directory
+  const skillSrc = path.join(EXTENSIONS_DIR, 'openclaw-plugin', 'SKILL.md');
+  const skillDest = path.join(OPENCLAW_SKILLS, 'jasper-recall', 'SKILL.md');
+  
+  if (fs.existsSync(skillSrc)) {
+    fs.mkdirSync(path.dirname(skillDest), { recursive: true });
+    fs.copyFileSync(skillSrc, skillDest);
+    console.log(`  ✓ Installed SKILL.md: ${skillDest}`);
+  } else {
+    console.log('  ⚠ SKILL.md not found in package (try reinstalling)');
+  }
+  
+  // Update openclaw.json with plugin config
+  if (fs.existsSync(OPENCLAW_CONFIG)) {
+    try {
+      const configRaw = fs.readFileSync(OPENCLAW_CONFIG, 'utf8');
+      const config = JSON.parse(configRaw);
+      
+      // Initialize plugins structure if needed
+      if (!config.plugins) config.plugins = {};
+      if (!config.plugins.entries) config.plugins.entries = {};
+      
+      // Check if already configured
+      if (config.plugins.entries['jasper-recall']) {
+        console.log('  ✓ Plugin already configured in openclaw.json');
+      } else {
+        // Add plugin config
+        config.plugins.entries['jasper-recall'] = {
+          enabled: true,
+          config: {
+            autoRecall: true,
+            minScore: 0.3,
+            defaultLimit: 5
+          }
+        };
+        
+        // Write back with nice formatting
+        fs.writeFileSync(OPENCLAW_CONFIG, JSON.stringify(config, null, 2) + '\n');
+        console.log('  ✓ Added jasper-recall plugin to openclaw.json');
+        console.log('  → Restart OpenClaw gateway to activate: openclaw gateway restart');
+      }
+    } catch (e) {
+      console.log(`  ⚠ Could not update openclaw.json: ${e.message}`);
+      console.log('  → Manually add plugin config (see docs)');
+    }
+  } else {
+    console.log('  ⚠ openclaw.json not found');
+    console.log('  → Create config or manually add jasper-recall plugin');
+  }
+  
+  return true;
 }
 
 function setup() {
@@ -117,6 +184,11 @@ function setup() {
     log('Add to your PATH (add to ~/.bashrc or ~/.zshrc):');
     console.log(`  export PATH="$HOME/.local/bin:$PATH"`);
   }
+  
+  console.log('');
+  
+  // OpenClaw integration
+  setupOpenClawIntegration();
   
   console.log('');
   console.log('=' .repeat(40));

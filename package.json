@@ -1,6 +1,6 @@
 {
   "name": "jasper-recall",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Local RAG system for AI agent memory using ChromaDB and sentence-transformers",
   "main": "src/index.js",
   "bin": {
@@ -36,6 +36,7 @@
     "cli/",
     "scripts/",
     "src/",
+    "extensions/",
     "SKILL.md",
     "README.md"
   ]
