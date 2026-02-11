@@ -313,6 +313,14 @@ When `autoRecall: true` in the OpenClaw plugin config, memories are automaticall
 - Review which collections will be searched
 - Use `minScore` to filter low-relevance injections
 
+**What's automatically skipped (no recall triggered):**
+- Heartbeat polls (`HEARTBEAT`, `Read HEARTBEAT.md`, `HEARTBEAT_OK`)
+- Messages containing `NO_REPLY`
+- Messages < 10 characters
+- Agent-to-agent messages (cron jobs, workers, spawned agents)
+- Automated reports (`📋 PR Review`, `🤖 Codex Watch`, `ANNOUNCE_*`)
+- Messages from senders starting with `agent:` or `worker-`
+
 **Safer config for untrusted contexts:**
 ```json
 "jasper-recall": {

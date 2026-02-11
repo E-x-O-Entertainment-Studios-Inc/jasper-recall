@@ -81,14 +81,37 @@ export default function register(api: PluginApi) {
   // ============================================================================
   
   if (autoRecall) {
-    api.on('before_agent_start', async (event: { prompt?: string }) => {
+    api.on('before_agent_start', async (event: { prompt?: string; senderId?: string; source?: string }) => {
       // Skip if no prompt or too short
       if (!event.prompt || event.prompt.length < 10) {
         return;
       }
 
-      // Skip system/internal prompts
-      if (event.prompt.startsWith('HEARTBEAT') || event.prompt.includes('NO_REPLY')) {
+      const prompt = event.prompt;
+
+      // Skip heartbeats and system prompts
+      if (prompt.startsWith('HEARTBEAT') || 
+          prompt.startsWith('Read HEARTBEAT.md') ||
+          prompt.includes('NO_REPLY') ||
+          prompt.includes('HEARTBEAT_OK')) {
+        return;
+      }
+
+      // Skip agent-to-agent messages (cron jobs, workers, spawned agents)
+      if (event.source?.startsWith('cron:') ||
+          event.source?.startsWith('agent:') ||
+          event.source?.startsWith('spawn:') ||
+          event.source === 'sessions_send' ||
+          event.senderId?.startsWith('agent:') ||
+          event.senderId?.startsWith('worker-')) {
+        return;
+      }
+
+      // Skip common automated patterns
+      if (prompt.startsWith('Agent-to-agent') ||
+          prompt.startsWith('📋 PR Review') ||
+          prompt.startsWith('🤖 Codex Watch') ||
+          prompt.startsWith('ANNOUNCE_')) {
         return;
       }
 
