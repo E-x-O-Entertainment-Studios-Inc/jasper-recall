@@ -4,7 +4,10 @@
   "description": "Local RAG system for AI agent memory using ChromaDB and sentence-transformers",
   "main": "src/index.js",
   "bin": {
-    "jasper-recall": "./cli/jasper-recall.js"
+    "jasper-recall": "./cli/jasper-recall.js",
+    "digest-sessions": "./cli/digest-sessions.js",
+    "index-digests": "./cli/index-digests.js",
+    "recall": "./cli/recall.js"
   },
   "openclaw": {
     "extensions": [

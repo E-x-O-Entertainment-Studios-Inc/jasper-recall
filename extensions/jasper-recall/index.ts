@@ -327,6 +327,38 @@ ${identityParts.join('\n\n---\n\n')}
   });
 
   // ============================================================================
+  // Command: /digest-sessions
+  // ============================================================================
+
+  api.registerCommand({
+    name: 'digest-sessions',
+    description: 'Extract summaries from session logs into memory',
+    acceptsArgs: true,
+    requireAuth: true,
+    handler: async (ctx: { args?: string }) => {
+      try {
+        const args = ctx.args?.trim() || '';
+        const digestPath = path.join(BIN_PATH, 'digest-sessions');
+        
+        // Check if digest-sessions exists in PATH, otherwise use npx
+        let cmd: string;
+        try {
+          execSync(`which ${digestPath}`, { encoding: 'utf8' });
+          cmd = `${digestPath} ${args}`;
+        } catch {
+          // Fall back to npx
+          cmd = `npx jasper-recall digest-sessions ${args}`;
+        }
+        
+        const output = execSync(cmd, { encoding: 'utf8', timeout: 300000 });
+        return { text: `🗂️ **Session Digests**\n\n${output}` };
+      } catch (err: any) {
+        return { text: `❌ Digest failed: ${err.message}` };
+      }
+    },
+  });
+
+  // ============================================================================
   // Command: /jasper-recall setup
   // ============================================================================
 
