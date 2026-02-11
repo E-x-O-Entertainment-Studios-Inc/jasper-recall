@@ -293,6 +293,68 @@ Default settings in index-digests:
 - Chunk size: 500 characters
 - Overlap: 100 characters
 
+## Security Considerations
+
+⚠️ **Review these settings before enabling in production:**
+
+### Server Binding
+
+The `serve` command defaults to `127.0.0.1` (localhost only). **Do not use `--host 0.0.0.0`** unless you explicitly intend to expose the API externally and have secured it appropriately.
+
+### Private Memory Access
+
+The server enforces `public_only=true` by default. The env var `RECALL_ALLOW_PRIVATE=true` bypasses this restriction. **Never set this on public/shared hosts** — it exposes your private memories to any client.
+
+### autoRecall Plugin
+
+When `autoRecall: true` in the OpenClaw plugin config, memories are automatically injected before every agent message. Consider:
+
+- Set `publicOnly: true` in plugin config for sandboxed agents
+- Review which collections will be searched
+- Use `minScore` to filter low-relevance injections
+
+**Safer config for untrusted contexts:**
+```json
+"jasper-recall": {
+  "enabled": true,
+  "config": {
+    "autoRecall": true,
+    "publicOnly": true,
+    "minScore": 0.5
+  }
+}
+```
+
+### Environment Variables
+
+The following env vars affect behavior — set them explicitly rather than relying on defaults:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `RECALL_WORKSPACE` | `~/.openclaw/workspace` | Memory files location |
+| `RECALL_CHROMA_DB` | `~/.openclaw/chroma-db` | Vector database path |
+| `RECALL_SESSIONS_DIR` | `~/.openclaw/agents/main/sessions` | Session logs |
+| `RECALL_ALLOW_PRIVATE` | `false` | Server private access |
+| `RECALL_PORT` | `3458` | Server port |
+| `RECALL_HOST` | `127.0.0.1` | Server bind address |
+
+### Dry-Run First
+
+Before sharing or syncing, use dry-run options to preview what will be exposed:
+
+```bash
+privacy-check --file notes.md     # Scan for sensitive data
+sync-shared --dry-run             # Preview public extraction
+digest-sessions --dry-run         # Preview session processing
+```
+
+### Sandboxed Environments
+
+For maximum isolation, run jasper-recall in a container or dedicated account:
+- Limits risk of accidental data exposure
+- Separates private memory from shared contexts
+- Recommended for multi-agent setups with untrusted agents
+
 ## Troubleshooting
 
 **"No index found"**
