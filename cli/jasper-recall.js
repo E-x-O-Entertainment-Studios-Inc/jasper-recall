@@ -198,6 +198,36 @@ function setup() {
   console.log('  1. index-digests     # Index your memory files');
   console.log('  2. recall "query"    # Search your memory');
   console.log('  3. digest-sessions   # Process session logs');
+  console.log('');
+  
+  // Check for sandboxed agents
+  const sandboxedWorkspaces = findSandboxedWorkspaces();
+  if (sandboxedWorkspaces.length > 0) {
+    console.log('📦 Sandboxed agents detected:');
+    sandboxedWorkspaces.forEach(ws => console.log(`   - ${ws}`));
+    console.log('');
+    console.log('   Configure them with: npx jasper-recall sandboxed-setup');
+    console.log('   (gives them --public-only access to shared memories)');
+    console.log('');
+  }
+}
+
+function findSandboxedWorkspaces() {
+  const openclawDir = path.join(os.homedir(), '.openclaw');
+  const workspaces = [];
+  
+  try {
+    const entries = fs.readdirSync(openclawDir);
+    for (const entry of entries) {
+      if (entry.startsWith('workspace-') && entry !== 'workspace') {
+        workspaces.push(entry.replace('workspace-', ''));
+      }
+    }
+  } catch (e) {
+    // Directory doesn't exist
+  }
+  
+  return workspaces;
 }
 
 function showHelp() {
@@ -219,8 +249,8 @@ COMMANDS:
   serve           Start HTTP API server (for sandboxed agents)
   config          Show or set configuration
   update          Check for updates
-  moltbook-setup  Configure moltbook agent with --public-only restriction
-  moltbook-verify Verify moltbook agent setup
+  sandboxed-setup   Configure sandboxed agents (email, social, calendar, etc.)
+  sandboxed-verify  Verify sandboxed agent configurations
   help            Show this help message
 
 CONFIGURATION:
@@ -313,14 +343,18 @@ switch (command) {
     };
     process.exit(runDoctor(options));
     break;
+  case 'sandboxed-setup':
+  case 'sandbox-setup':
   case 'moltbook-setup':
   case 'moltbook':
-    // Set up moltbook agent integration
+    // Interactive setup for sandboxed agents
     process.argv = [process.argv[0], process.argv[1], 'setup'];
     require('../extensions/moltbook-setup/setup.js');
     break;
+  case 'sandboxed-verify':
+  case 'sandbox-verify':
   case 'moltbook-verify':
-    // Verify moltbook agent setup
+    // Verify sandboxed agent setups
     process.argv = [process.argv[0], process.argv[1], 'verify'];
     require('../extensions/moltbook-setup/setup.js');
     break;
