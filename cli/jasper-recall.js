@@ -168,6 +168,21 @@ function setup() {
   run(`${pip} install --quiet chromadb sentence-transformers`);
   console.log('  ✓ Installed: chromadb, sentence-transformers');
   
+  // Pre-download embedding model (~90MB) to avoid timeout on first recall
+  log('Downloading embedding model (first time only, ~90MB)...');
+  const pythonBin = path.join(VENV_PATH, 'bin', 'python3');
+  try {
+    execSync(`${pythonBin} -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"`, {
+      encoding: 'utf8',
+      timeout: 300000, // 5 min timeout for download
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    console.log('  ✓ Model cached: sentence-transformers/all-MiniLM-L6-v2');
+  } catch (err) {
+    console.log('  ⚠ Model download failed (will retry on first recall)');
+    console.log(`    ${err.message}`);
+  }
+  
   // Create bin directory
   fs.mkdirSync(BIN_PATH, { recursive: true });
   
