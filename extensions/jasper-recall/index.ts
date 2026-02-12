@@ -56,7 +56,8 @@ function runRecall(query: string, options: { limit?: number; json?: boolean; pub
   
   const recallPath = path.join(BIN_PATH, 'recall');
   try {
-    return execSync(`${recallPath} ${args.join(' ')}`, { encoding: 'utf8', timeout: 30000 });
+    // 120s timeout - first run may need to download model (~90MB)
+    return execSync(`${recallPath} ${args.join(' ')}`, { encoding: 'utf8', timeout: 120000 });
   } catch (err: any) {
     throw new Error(`Recall failed: ${err.message}`);
   }
