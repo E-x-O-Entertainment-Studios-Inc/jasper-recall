@@ -29,6 +29,10 @@ const SCRIPTS_DIR = path.join(__dirname, '..', 'scripts');
 const EXTENSIONS_DIR = path.join(__dirname, '..', 'extensions');
 const OPENCLAW_CONFIG = path.join(os.homedir(), '.openclaw', 'openclaw.json');
 const OPENCLAW_SKILLS = path.join(os.homedir(), '.openclaw', 'workspace', 'skills');
+const BRAIN_PATH = path.join(os.homedir(), '.openclaw', 'brain');
+const BRAIN_CONFIG = path.join(os.homedir(), '.jasper-recall', 'brain.json');
+const DEFAULT_BRAIN_PORT = 8787;
+const DEFAULT_BRAIN_HOST = '127.0.0.1';
 
 function log(msg) {
   console.log(`🦊 ${msg}`);
@@ -135,6 +139,272 @@ function setupOpenClawIntegration() {
   }
   
   return true;
+}
+
+// ============================================================================
+// Brain (Quartz) Setup - Optional web UI for memory browsing
+// ============================================================================
+
+function getBrainConfig() {
+  const configDir = path.dirname(BRAIN_CONFIG);
+  fs.mkdirSync(configDir, { recursive: true });
+  
+  if (fs.existsSync(BRAIN_CONFIG)) {
+    try {
+      return JSON.parse(fs.readFileSync(BRAIN_CONFIG, 'utf8'));
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function saveBrainConfig(config) {
+  const configDir = path.dirname(BRAIN_CONFIG);
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.writeFileSync(BRAIN_CONFIG, JSON.stringify(config, null, 2));
+}
+
+function setupBrain(options = {}) {
+  const port = options.port || DEFAULT_BRAIN_PORT;
+  const host = options.host || DEFAULT_BRAIN_HOST;
+  
+  log('Setting up Jasper Brain (Quartz knowledge base)...');
+  console.log('');
+  
+  // Check for Node.js and npm
+  try {
+    execSync('npx --version', { stdio: 'pipe' });
+  } catch {
+    error('npx not found. Node.js is required for Quartz.');
+    return false;
+  }
+  
+  // Check if Quartz is already installed
+  if (fs.existsSync(BRAIN_PATH) && fs.existsSync(path.join(BRAIN_PATH, 'quartz.config.ts'))) {
+    console.log(`  ✓ Quartz already installed at ${BRAIN_PATH}`);
+  } else {
+    log('Cloning Quartz...');
+    fs.mkdirSync(path.dirname(BRAIN_PATH), { recursive: true });
+    
+    try {
+      execSync(`git clone https://github.com/jackyzha0/quartz.git "${BRAIN_PATH}"`, {
+        stdio: 'inherit',
+        timeout: 120000
+      });
+      console.log(`  ✓ Cloned Quartz to ${BRAIN_PATH}`);
+    } catch (err) {
+      error(`Failed to clone Quartz: ${err.message}`);
+      return false;
+    }
+    
+    // Install dependencies
+    log('Installing Quartz dependencies...');
+    try {
+      execSync('npm install', { cwd: BRAIN_PATH, stdio: 'inherit', timeout: 180000 });
+      console.log('  ✓ Dependencies installed');
+    } catch (err) {
+      error(`Failed to install dependencies: ${err.message}`);
+      return false;
+    }
+  }
+  
+  // Link memory folder to Quartz content
+  const contentPath = path.join(BRAIN_PATH, 'content');
+  const memoryPath = path.join(os.homedir(), '.openclaw', 'workspace', 'memory');
+  
+  if (fs.existsSync(memoryPath)) {
+    // Remove default content and symlink memory
+    if (fs.existsSync(contentPath)) {
+      const stats = fs.lstatSync(contentPath);
+      if (stats.isSymbolicLink()) {
+        console.log(`  ✓ Memory already linked: ${contentPath} -> ${memoryPath}`);
+      } else {
+        // Backup and replace
+        const backupPath = contentPath + '.backup';
+        if (!fs.existsSync(backupPath)) {
+          fs.renameSync(contentPath, backupPath);
+        } else {
+          fs.rmSync(contentPath, { recursive: true });
+        }
+        fs.symlinkSync(memoryPath, contentPath);
+        console.log(`  ✓ Linked memory to Quartz: ${memoryPath}`);
+      }
+    } else {
+      fs.symlinkSync(memoryPath, contentPath);
+      console.log(`  ✓ Linked memory to Quartz: ${memoryPath}`);
+    }
+  } else {
+    console.log(`  ⚠ Memory folder not found: ${memoryPath}`);
+    console.log('    Create it with: mkdir -p ~/.openclaw/workspace/memory');
+  }
+  
+  // Save config
+  const config = getBrainConfig();
+  config.path = BRAIN_PATH;
+  config.port = port;
+  config.host = host;
+  config.contentPath = memoryPath;
+  saveBrainConfig(config);
+  
+  // Create rebuild-brain script
+  const rebuildScript = path.join(BIN_PATH, 'rebuild-brain');
+  const rebuildContent = `#!/bin/bash
+# Rebuild Jasper Brain (Quartz static site)
+cd "${BRAIN_PATH}" && npx quartz build
+`;
+  fs.writeFileSync(rebuildScript, rebuildContent);
+  fs.chmodSync(rebuildScript, 0o755);
+  console.log(`  ✓ Created: ${rebuildScript}`);
+  
+  // Create serve-brain script
+  const serveScript = path.join(BIN_PATH, 'serve-brain');
+  const serveContent = `#!/bin/bash
+# Start Jasper Brain web server
+cd "${BRAIN_PATH}" && npx quartz build --serve --port ${port} --host ${host}
+`;
+  fs.writeFileSync(serveScript, serveContent);
+  fs.chmodSync(serveScript, 0o755);
+  console.log(`  ✓ Created: ${serveScript}`);
+  
+  console.log('');
+  log('Brain setup complete!');
+  console.log('');
+  console.log('Commands:');
+  console.log('  rebuild-brain    # Build static site from memory files');
+  console.log('  serve-brain      # Start web server');
+  console.log('');
+  console.log(`Server will run at: http://${host}:${port}`);
+  console.log('');
+  
+  return true;
+}
+
+function brainStatus() {
+  const config = getBrainConfig();
+  
+  console.log('🧠 Jasper Brain Status');
+  console.log('=' .repeat(40));
+  
+  if (!config.path || !fs.existsSync(config.path)) {
+    console.log('Status: Not installed');
+    console.log('');
+    console.log('Run: npx jasper-recall brain setup');
+    return;
+  }
+  
+  console.log(`Path: ${config.path}`);
+  console.log(`Port: ${config.port || DEFAULT_BRAIN_PORT}`);
+  console.log(`Host: ${config.host || DEFAULT_BRAIN_HOST}`);
+  console.log(`Content: ${config.contentPath || 'not linked'}`);
+  console.log('');
+  
+  // Check if server is running
+  try {
+    const host = config.host || DEFAULT_BRAIN_HOST;
+    const port = config.port || DEFAULT_BRAIN_PORT;
+    execSync(`curl -s -o /dev/null -w "%{http_code}" http://${host}:${port}/ | grep -q 200`, { stdio: 'pipe' });
+    console.log(`Server: ✅ Running at http://${host}:${port}`);
+  } catch {
+    console.log('Server: ❌ Not running');
+    console.log('  Start with: serve-brain');
+  }
+}
+
+function brainCommand(args) {
+  const subcommand = args[0];
+  
+  switch (subcommand) {
+    case 'setup':
+    case 'install': {
+      const portIdx = args.indexOf('--port');
+      const hostIdx = args.indexOf('--host');
+      const options = {
+        port: portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : DEFAULT_BRAIN_PORT,
+        host: hostIdx !== -1 ? args[hostIdx + 1] : DEFAULT_BRAIN_HOST
+      };
+      setupBrain(options);
+      break;
+    }
+    case 'status':
+      brainStatus();
+      break;
+    case 'serve':
+    case 'start': {
+      const config = getBrainConfig();
+      if (!config.path) {
+        error('Brain not installed. Run: npx jasper-recall brain setup');
+        process.exit(1);
+      }
+      const port = config.port || DEFAULT_BRAIN_PORT;
+      const host = config.host || DEFAULT_BRAIN_HOST;
+      console.log(`Starting brain server at http://${host}:${port}...`);
+      spawn('npx', ['quartz', 'build', '--serve', '--port', String(port), '--host', host], {
+        cwd: config.path,
+        stdio: 'inherit'
+      });
+      break;
+    }
+    case 'build':
+    case 'rebuild': {
+      const config = getBrainConfig();
+      if (!config.path) {
+        error('Brain not installed. Run: npx jasper-recall brain setup');
+        process.exit(1);
+      }
+      console.log('Building brain...');
+      execSync('npx quartz build', { cwd: config.path, stdio: 'inherit' });
+      break;
+    }
+    case 'port': {
+      const newPort = parseInt(args[1], 10);
+      if (isNaN(newPort)) {
+        const config = getBrainConfig();
+        console.log(`Current port: ${config.port || DEFAULT_BRAIN_PORT}`);
+      } else {
+        const config = getBrainConfig();
+        config.port = newPort;
+        saveBrainConfig(config);
+        console.log(`Port set to: ${newPort}`);
+        console.log('Restart serve-brain for changes to take effect.');
+      }
+      break;
+    }
+    case 'host': {
+      const newHost = args[1];
+      if (!newHost) {
+        const config = getBrainConfig();
+        console.log(`Current host: ${config.host || DEFAULT_BRAIN_HOST}`);
+      } else {
+        const config = getBrainConfig();
+        config.host = newHost;
+        saveBrainConfig(config);
+        console.log(`Host set to: ${newHost}`);
+        console.log('Restart serve-brain for changes to take effect.');
+      }
+      break;
+    }
+    default:
+      console.log(`
+🧠 Jasper Brain - Web UI for your memory
+
+USAGE:
+  npx jasper-recall brain <command>
+
+COMMANDS:
+  setup [--port N] [--host H]   Install Quartz and link memory
+  status                        Show brain status
+  serve                         Start the web server
+  build                         Rebuild static site
+  port [N]                      Show or set port (default: ${DEFAULT_BRAIN_PORT})
+  host [H]                      Show or set host (default: ${DEFAULT_BRAIN_HOST})
+
+EXAMPLES:
+  npx jasper-recall brain setup
+  npx jasper-recall brain setup --port 8080 --host 0.0.0.0
+  npx jasper-recall brain serve
+`);
+  }
 }
 
 function setup() {
@@ -291,6 +561,8 @@ COMMANDS:
   digest          Process session logs (alias for digest-sessions)
   summarize       Compress old entries to save tokens (alias for summarize-old)
   serve           Start HTTP API server (for sandboxed agents)
+  brain           Manage Quartz web UI for memory browsing
+                  Subcommands: setup, status, serve, build, port, host
   config          Show or set configuration
   update          Check for updates
   sandboxed-setup   Configure sandboxed agents (email, social, calendar, etc.)
@@ -413,6 +685,10 @@ switch (command) {
     } else {
       config.show();
     }
+    break;
+  case 'brain':
+    // Quartz knowledge base management
+    brainCommand(process.argv.slice(3));
     break;
   case '--version':
   case '-v':
