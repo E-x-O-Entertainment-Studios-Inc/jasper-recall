@@ -172,10 +172,12 @@ function setup() {
   log('Downloading embedding model (first time only, ~90MB)...');
   const pythonBin = path.join(VENV_PATH, 'bin', 'python3');
   try {
-    execSync(`${pythonBin} -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"`, {
+    // Suppress LibreSSL/OpenSSL warning on macOS
+    execSync(`${pythonBin} -W ignore::DeprecationWarning -c "import warnings; warnings.filterwarnings('ignore'); from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"`, {
       encoding: 'utf8',
       timeout: 300000, // 5 min timeout for download
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, PYTHONWARNINGS: 'ignore' }
     });
     console.log('  ✓ Model cached: sentence-transformers/all-MiniLM-L6-v2');
   } catch (err) {
